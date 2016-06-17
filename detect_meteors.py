@@ -11,6 +11,7 @@ import os
 import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
+from module_skeleton import freq_dft
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -179,7 +180,10 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     for k, (tx, rx) in enumerate(data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)):
         #FIXME call processing functions here
-        pass
+        
+        return freq_dft(tx, rx)
+  
+      
 
 
 if __name__ == "__main__":
@@ -222,5 +226,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+new_array3 = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)

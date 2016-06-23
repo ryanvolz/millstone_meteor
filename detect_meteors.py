@@ -7,11 +7,12 @@ import xarray as xr
 import scipy as sp
 import scipy.stats
 import os
+from collections import namedtuple
 
 import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
-from module_skeleton import freq_dft
+from module_skeleton import *
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -179,9 +180,11 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         tmm.loadFromHdf5(skip_lowlevel=True)
 
     for k, (tx, rx) in enumerate(data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)):
-        #FIXME call processing functions here
         
-        return freq_dft(tx, rx)
+        f = np.fft.fftfreq(rx.shape[0], 1e-6)
+        event = freq_dft(tx, rx)
+        meteor_list = is_there_a_meteor(event, 300, 20533, 211200)
+        return event, tx, rx, meteor_list
   
       
 
@@ -226,5 +229,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-new_array3 = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+event, tx, rx, meteor_list = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)

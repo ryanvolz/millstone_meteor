@@ -1,6 +1,8 @@
 import numpy as np
 import rkl
 import math
+import xarray as xr
+from collections import namedtuple
 
 # interferance and clutter removal
 
@@ -11,48 +13,54 @@ def strongest_signal(signal):
 
 # frequency bank of matched filters for a single pulse
 def freq_dft(array1, array2):
-    y = rkl.delay_multiply.delaymult_like_arg2(array2, array1, R=1)
+    y = rkl.delay_multiply.delaymult_like_arg2(array2.values/array2.noise_power, array1.values, R=1)
     z = np.fft.fft(y)
     maxfreqidx = strongest_signal(z)
-    f = np.fft.fftfreq(array1.shape[0], 1e-6) 
-    new_array1 = np.array(y[0], dtype=complex)
+    f = np.fft.fftfreq(array1.shape[0], 1e-6)
+ 
+    array = np.arange(array2.delay.values[0]-len(array1), array2.delay.values[0])
+    delay_array = np.append(array, array2.delay.values)
+
     data = []
+
     for q in range(0, len(z[1])):
          data.append(f[q])
-    new_array2 = np.array(np.asarray(data))
-    saved_data = z[:, maxfreqidx]
-    new_array3 = np.array((new_array1, new_array2))
-    return new_array3, saved_data
+
+    freq_array = np.array(np.asarray(data))
+    snr_vals = (np.abs(array2.values)**2)/array2.noise_power
+    Pulse_Info = namedtuple('Pulse_Info', 'delay frequencies data_range snr time')
+    drange = (delay_array*3e8/array2.sample_rate*2)/1e3
+    event = Pulse_Info(delay=delay_array, frequencies=freq_array, data_range=drange, snr=snr_vals, time=array2.t)
+
+    return event
+
+# meteor signal detection for a single pulse
+# need to include range in output
+def is_there_a_meteor(named_tuple, thres, fmin, fmax):
+    list_of_meteors = []
+    gen = (val for val in list(named_tuple[3]) if val >= thres)
+    for val in gen:
+        val_ind = named_tuple[3].index(val) 
+        if fmin < f[val_ind] < fmax:
+            # returns object's time, snr, frequency
+            meteor_list = [named_tuple[4], f[val_ind], val]
+            return meteor_list 
+
+# clustering class then runs
+
+# speed of object = (meteor_list[3]*3e8/(440e6*2))/1e3
 
 """
-# meteor signal detection for a single pulse
-# need the signal data for snr threshold
-def meteor_present(array, thres, fmin, fmax):
-    if np.max(20*np.log10(np.abs(saved_data))) >= thres:
-        if fmin < array[1] < fmax:
-            return meteor_list = [..., ..., array[1]]
-
-
-# event clustering function
-# ts, rs, fs, threshold have not been defined...
-# currently identifies which meteor detections(list) are below the threshold
-def cluster(list_of_data):
-    dist_list = []
-    for i in range(0, len(list_of_data)-1):
-        y = np.asarray(list_of_data[i])
-        t1 = y[0]
-        r1 = y[1]
-        f1 = y[2]
-        y2 = np.asarray(list_of_data[i+1])
-        t2 = y2[0]
-        r2 = y2[1]
-        f2 = y2[2]
-        dist = math.sqrt((t1 - t2)**2/ts + (r1 - r2)**2/rs + (f1 - f2)**2/fs)
-        if dist < ...:
-            dist_list.append(list_of_data[i])  
-
 # summarize the results of the previous functions
-def summary(list_of_meteors): """
+def summary(dict_of_meteors):
+    df_meteors = pd.DataFrame(dict_of_meteors, index=['time', 'range', 'velocity', 'max snr', 'frequency'])
+    return df_meteors
+"""
+    
+    
+        
+        
+    
 
    
             

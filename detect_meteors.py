@@ -224,8 +224,10 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
             yield c
 
     clusters = list(cluster_generator(data_list))
-    ims = data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
-    return ims
+    data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
+    np.savetxt("pulse_data.txt", saved_data)
+    cluster_summary = summary(clusters)
+    return clusters, cluster_summary
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -267,7 +269,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-ims = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+clusters, cluster_summary = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)
 
 

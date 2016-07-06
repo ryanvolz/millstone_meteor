@@ -3,6 +3,7 @@ import rkl
 import math
 import xarray as xr
 from time_utils import datetime_to_float
+import pandas as pd
 
 # interferance and clutter removal
 
@@ -34,4 +35,29 @@ def is_there_a_meteor(data, snr_val, snr_idx, thres, fmin, fmax):
             info = (t, signal_range, f[snr_idx[1]])
             meteor_list.extend(info)
     return meteor_list 
+
+# work-in progress 
+def summary(events):
+    d = {}
+    idx = []
+    initial_t = []
+    duration = []
+    initial_r = []
+    range_rate = []
+    for i in range(0, len(events)):
+        initial_t.append(events[i]['t'][0])
+        t = (events[i]['t'][events[i]['t'].shape[0] - 1] - events[i]['t'][0])
+        duration.append(t)
+        initial_r.append(events[i]['r'][0])
+        rrate = (events[i]['r'][events[i]['r'].shape[0] - 1] - events[i]['r'][0])/t
+        range_rate.append(rrate)
+        idx.append(i + 1)
+
+    d['initial t'] = initial_t
+    d['duration'] = duration
+    d['initial r'] = initial_r
+    d['range rate'] = range_rate
+    cluster_summary = pd.DataFrame(d, index=[list(idx)])
+    return cluster_summary
+
 

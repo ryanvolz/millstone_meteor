@@ -8,11 +8,15 @@ import scipy as sp
 import scipy.stats
 import os
 from collections import namedtuple
+import math
+from time_utils import datetime_to_float
 
 import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
 from module_skeleton import *
+from clustering import Clustering
+from meteor_plotting import *
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -178,16 +182,50 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         tmm.loadFromHdf5('/tmp/tmm.hdf5', skip_lowlevel=True)
     else:
         tmm.loadFromHdf5(skip_lowlevel=True)
+    
+    data_list = []
+    saved_data = np.zeros((59858, 1120))
+    pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)
+    times = []
+    for k, (tx, rx) in enumerate(pulse_data):
 
-    for k, (tx, rx) in enumerate(data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)):
-        
-        f = np.fft.fftfreq(rx.shape[0], 1e-6)
-        event = freq_dft(tx, rx)
-        meteor_list = is_there_a_meteor(event, 300, 20533, 211200)
-        return event, tx, rx, meteor_list
-  
-      
+        num_of_pulses = np.int((s1 - s0)/(rx.sample_rate*0.0267300605774))
+        # function that calculates snr values
+        def data_cal(array):
+            snr_vals = (np.abs(array.values)**2)/rx.noise_power
+            snr_point = np.unravel_index(np.argmax(snr_vals), (6879, 480))
+            max_snr = snr_vals[snr_point[0], snr_point[1]]
+            return max_snr, snr_point, snr_vals
 
+        mf_rx = freq_dft(tx, rx)
+        max_snr, snr_point, snr_vals = data_cal(mf_rx)
+        meteor_list = is_there_a_meteor(mf_rx, max_snr, snr_point, 1, 20533, 211200)
+
+        def list_filter(data):
+	    velocity = mf_rx.frequency.values[snr_point[1]]*3e8/(440e6*2)
+            info = (velocity, max_snr, k)
+            data.extend(info)
+            return data
+
+        if meteor_list != []:
+            new_list = list_filter(meteor_list)
+            data_list.append(new_list)
+
+        saved_data[k, :] = snr_vals[480 : 1600, snr_point[1]]
+        range_vals =(3e8*mf_rx.delay.values[480 : 1600])/(2*rx.sample_rate)
+        times.append(mf_rx.t.values)
+
+    clustering = Clustering(eps=12, min_samples=1, tscale=0.03, rscale=150, vscale=710.27)
+    def cluster_generator(data):
+    	for item in data:
+            for c in clustering.addnext(t=item[0], r=item[1], v=item[3], snr=item[4], pulse_num=item[5]):
+                yield c
+        for c in clustering.finish():
+            yield c
+
+    clusters = list(cluster_generator(data_list))
+    ims = data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
+    return ims
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -229,5 +267,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-event, tx, rx, meteor_list = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+ims = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)
+
+

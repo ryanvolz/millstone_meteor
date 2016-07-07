@@ -209,7 +209,7 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
         if meteor_list != []:
             new_list = list_filter(meteor_list)
-            data_list.append(new_list)
+            data_list.append(new_list) 
 
         saved_data[k, :] = snr_vals[480 : 1600, snr_point[1]]
         range_vals =(3e8*mf_rx.delay.values[480 : 1600])/(2*rx.sample_rate)
@@ -224,8 +224,8 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
             yield c
 
     clusters = list(cluster_generator(data_list))
-    data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
     np.savetxt("pulse_data.txt", saved_data)
+    #data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
     cluster_summary = summary(clusters)
     return clusters, cluster_summary
 

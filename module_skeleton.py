@@ -2,7 +2,7 @@ import numpy as np
 import rkl
 import math
 import xarray as xr
-from time_utils import datetime_to_float
+from time_utils import datetime_to_float, datetime_from_float
 import pandas as pd
 
 # interferance and clutter removal
@@ -30,8 +30,8 @@ def is_there_a_meteor(data, snr_val, snr_idx, thres, fmin, fmax):
     if snr_val >= thres:
         if fmin < f[snr_idx[1]] < fmax:
             # returns object's time, range, frequency at max SNR
-            signal_range = (3e8*data.delay.values[snr_idx[0]])/(2*fs)
     	    t = datetime_to_float(data.t.values)
+            signal_range = (3e8*data.delay.values[snr_idx[0]])/(2*fs)
             info = (t, signal_range, f[snr_idx[1]])
             meteor_list.extend(info)
     return meteor_list 
@@ -44,19 +44,44 @@ def summary(events):
     duration = []
     initial_r = []
     range_rate = []
+    snr_mean = []
+    snr_var = []
+    snr_peak = []
+    range_rates = []
+    lstsq = []
     for i in range(0, len(events)):
-        initial_t.append(events[i]['t'][0])
-        t = (events[i]['t'][events[i]['t'].shape[0] - 1] - events[i]['t'][0])
+        t0 = datetime_from_float(events[i]['t'][0], 'ms')
+        initial_t.append(t0)
+        t = events[i]['t'][events[i]['t'].shape[0] - 1] - events[i]['t'][0]
         duration.append(t)
         initial_r.append(events[i]['r'][0])
-        rrate = (events[i]['r'][events[i]['r'].shape[0] - 1] - events[i]['r'][0])/t
-        range_rate.append(rrate)
+        range_rate.append((events[i]['r'][0] - events[i]['r'][events[i]['r'].shape[0] - 1])/t)
         idx.append(i + 1)
-
+        snr_mean.append(np.mean(events[i]['snr']))
+        snr_var.append(np.var(events[i]['snr']))
+        snr_peak.append(np.max(events[i]['snr']))
+        rr2 = []
+        def rr(data, start):
+            if start < (data[i]['t'].shape[0] - 1):
+                rr1 = (data[i]['r'][start] - data[i]['r'][start + 1])
+                dt1 = np.abs((data[i]['t'][start] - data[i]['t'][start + 1]))
+                y = rr1/dt1
+                rr2.append(y)
+                rr(data, start + 1)
+        rr(events, 0)
+        range_rates.append(rr2)
+        A = np.vstack([events[i]['t'] - events[i]['t'][0], np.ones(events[i]['t'].shape[0])]).T
+        m, c = np.linalg.lstsq(A, events[i]['r'])[0]
+        lstsq.append(m)
     d['initial t'] = initial_t
     d['duration'] = duration
     d['initial r'] = initial_r
     d['range rate'] = range_rate
+    d['snr mean'] = snr_mean
+    d['snr var'] = snr_var
+    d['snr peak'] = snr_peak
+    d['range rates'] = range_rates
+    d['lstsq'] = lstsq 
     cluster_summary = pd.DataFrame(d, index=[list(idx)])
     return cluster_summary
 

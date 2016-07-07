@@ -48,7 +48,7 @@ def summary(events):
     snr_var = []
     snr_peak = []
     range_rates = []
-    lstsq = []
+    #lstsq = []
     for i in range(0, len(events)):
         t0 = datetime_from_float(events[i]['t'][0], 'ms')
         initial_t.append(t0)
@@ -70,9 +70,15 @@ def summary(events):
                 rr(data, start + 1)
         rr(events, 0)
         range_rates.append(rr2)
-        A = np.vstack([events[i]['t'] - events[i]['t'][0], np.ones(events[i]['t'].shape[0])]).T
-        m, c = np.linalg.lstsq(A, events[i]['r'])[0]
-        lstsq.append(m)
+        A1 = np.vstack([np.ones(events[i]['t'].shape[0]), events[i]['t'] - events[i]['t'][0]]).T
+        e1 = [1.0, 1.0, 0.0, 0.0]
+        e2 = [0.0, 0.02673, 0.0, 0.0]
+        A = np.vstack([e1, e2]).T
+        m = np.linalg.lstsq(A1, events[i]['r'])[0]
+        events_data = [104250, 106050, 67340, 0]
+        n = np.linalg.lstsq(A, np.asarray(events_data))
+        print A
+        print n
     d['initial t'] = initial_t
     d['duration'] = duration
     d['initial r'] = initial_r
@@ -81,7 +87,7 @@ def summary(events):
     d['snr var'] = snr_var
     d['snr peak'] = snr_peak
     d['range rates'] = range_rates
-    d['lstsq'] = lstsq 
+    #d['lstsq'] = lstsq 
     cluster_summary = pd.DataFrame(d, index=[list(idx)])
     return cluster_summary
 

@@ -225,7 +225,7 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     clusters = list(cluster_generator(data_list))
     np.savetxt("pulse_data.txt", saved_data)
-    #data_slitting(saved_data, 0, num_of_pulses, range_vals, times)
+    #data_plotter(saved_data, 0, num_of_pulses, range_vals, times)
     cluster_summary = summary(clusters)
     return clusters, cluster_summary
 

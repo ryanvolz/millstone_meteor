@@ -9,14 +9,15 @@ import scipy.stats
 import os
 from collections import namedtuple
 import math
-from time_utils import datetime_to_float
 
+from time_utils import datetime_to_float
 import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
-from module_skeleton import *
+import meteor_processing as mp
 from clustering import Clustering
-from meteor_plotting import *
+import meteor_plotting
+from valarg import valargmax
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -118,7 +119,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
         yield tx, rx
 
 def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
-                   t0=None, t1=None, rxch='zenith-l', txch='tx-h'):
+                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=12, min_samples=1, tscale=0.03, rscale=150, vscale=710.27, rmin=72, rmax=300):
     """Function to detect and summarize meteor head echoes.
 
 
@@ -182,52 +183,45 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         tmm.loadFromHdf5('/tmp/tmm.hdf5', skip_lowlevel=True)
     else:
         tmm.loadFromHdf5(skip_lowlevel=True)
-    
-    data_list = []
-    saved_data = np.zeros((59858, 1120))
+
+    #saved_data = np.zeros((59858, 1120))
     pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)
-    times = []
+    clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
+    cluster_summaries = []
+
     for k, (tx, rx) in enumerate(pulse_data):
 
-        num_of_pulses = np.int((s1 - s0)/(rx.sample_rate*0.0267300605774))
-        # function that calculates snr values
-        def data_cal(array):
-            snr_vals = (np.abs(array.values)**2)/rx.noise_power
-            snr_point = np.unravel_index(np.argmax(snr_vals), (6879, 480))
-            max_snr = snr_vals[snr_point[0], snr_point[1]]
-            return max_snr, snr_point, snr_vals
-
-        mf_rx = freq_dft(tx, rx)
-        max_snr, snr_point, snr_vals = data_cal(mf_rx)
-        meteor_list = is_there_a_meteor(mf_rx, max_snr, snr_point, 1, 20533, 211200)
-
-        def list_filter(data):
-	    velocity = mf_rx.frequency.values[snr_point[1]]*3e8/(440e6*2)
-            info = (velocity, max_snr, k)
-            data.extend(info)
-            return data
+        mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
+	snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
+        max_snr = valargmax(snr_vals)[0]
+        snr_point = np.unravel_index(valargmax(snr_vals)[1], (mf_rx.shape[0], mf_rx.shape[1]))
+        meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, rx.center_frequencies, k, rx.sample_rate)
 
         if meteor_list != []:
-            new_list = list_filter(meteor_list)
-            data_list.append(new_list) 
+            print meteor_list
 
-        saved_data[k, :] = snr_vals[480 : 1600, snr_point[1]]
-        range_vals =(3e8*mf_rx.delay.values[480 : 1600])/(2*rx.sample_rate)
-        times.append(mf_rx.t.values)
+        #saved_data[k, :] = snr_vals[480 : 1600, snr_point[1]]
+        #range_vals =(3e8*mf_rx.delay.values[480 : 1600])/(2*rx.sample_rate)
 
-    clustering = Clustering(eps=12, min_samples=1, tscale=0.03, rscale=150, vscale=710.27)
-    def cluster_generator(data):
-    	for item in data:
-            for c in clustering.addnext(t=item[0], r=item[1], v=item[3], snr=item[4], pulse_num=item[5]):
-                yield c
+        def clust(data):
+            if meteor_list != []:
+                for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
+                    yield c
+	c = list(clust(meteor_list))
+        cluster_summary = mp.summary(c)
+        cluster_summaries.append(cluster_summary)
+
+    def cluster_finish(c):
         for c in clustering.finish():
             yield c
 
-    clusters = list(cluster_generator(data_list))
-    np.savetxt("pulse_data.txt", saved_data)
+    clusters = list(cluster_finish(c))
+    cluster_summary = mp.summary(clusters)
+    cluster_summaries.append(cluster_summary)
+
+    return clusters, rx, tx, cluster_summaries
+	
     #data_plotter(saved_data, 0, num_of_pulses, range_vals, times)
-    cluster_summary = summary(clusters)
-    return clusters, cluster_summary
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -269,7 +263,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-clusters, cluster_summary = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+clusters, rx, tx, cluster_summaries = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)
 
 

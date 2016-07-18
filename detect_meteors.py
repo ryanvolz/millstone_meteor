@@ -9,6 +9,7 @@ import scipy.stats
 import os
 from collections import namedtuple
 import math
+import csv
 
 from time_utils import datetime_to_float
 import digital_rf_hdf5 as drf
@@ -119,7 +120,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
         yield tx, rx
 
 def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
-                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=12, min_samples=1, tscale=0.03, rscale=150, vscale=710.27, rmin=72, rmax=300):
+                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=15, min_samples=1, tscale=0.03, rscale=150, vscale=710.27, rmin=70, rmax=140, filename="cluster_summaries.txt"):
     """Function to detect and summarize meteor head echoes.
 
 
@@ -184,43 +185,53 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
     else:
         tmm.loadFromHdf5(skip_lowlevel=True)
 
-    #saved_data = np.zeros((59858, 1120))
     pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
-    cluster_summaries = []
+    cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate", "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
+    with open(filename, "w") as csvfile:
+        w = csv.DictWriter(csvfile, cols)
+	w.writeheader()
+
+    csvfile = open(filename, "ab")
+    cluster_list = []
+
+    def clust(data):
+	for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
+            yield c
 
     for k, (tx, rx) in enumerate(pulse_data):
+
 
         mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
 	snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
         max_snr = valargmax(snr_vals)[0]
         snr_point = np.unravel_index(valargmax(snr_vals)[1], (mf_rx.shape[0], mf_rx.shape[1]))
-        meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, rx.center_frequencies, k, rx.sample_rate)
+        meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, k, rx.sample_rate)
 
-        if meteor_list != []:
-            print meteor_list
+        #saved_data[k, :] = snr_vals[:, snr_point[1]]
 
-        #saved_data[k, :] = snr_vals[480 : 1600, snr_point[1]]
-        #range_vals =(3e8*mf_rx.delay.values[480 : 1600])/(2*rx.sample_rate)
+	if meteor_list != []:
+	    c = list(clust(meteor_list))
+            if c != []:
+		print c
+	        cluster_list.append(c)
+                for item in c:
+	            cluster_summary1 = mp.summary(item)
+                    cluster_summary1.to_csv(csvfile, header=False, index=False)
 
-        def clust(data):
-            if meteor_list != []:
-                for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
-                    yield c
-	c = list(clust(meteor_list))
-        cluster_summary = mp.summary(c)
-        cluster_summaries.append(cluster_summary)
-
-    def cluster_finish(c):
+    def cluster_finish():
         for c in clustering.finish():
             yield c
+    
+    #range_vals =(3e8*mf_rx.delay.values)/(2*rx.sample_rate)
+    clusters = list(cluster_finish())
+    cluster_list.append(clusters)
+    for item in clusters:
+	print item
+        cluster_summary = mp.summary(item)
+        cluster_summary.to_csv(csvfile, header=False, index=False)
+    return cluster_list, rx
 
-    clusters = list(cluster_finish(c))
-    cluster_summary = mp.summary(clusters)
-    cluster_summaries.append(cluster_summary)
-
-    return clusters, rx, tx, cluster_summaries
-	
     #data_plotter(saved_data, 0, num_of_pulses, range_vals, times)
 
 if __name__ == "__main__":
@@ -263,7 +274,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-clusters, rx, tx, cluster_summaries = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+cluster_list, rx = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)
 
 

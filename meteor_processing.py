@@ -17,10 +17,9 @@ def matched_filter(tx, rx, rmin, rmax):
     y = rkl.delay_multiply.delaymult_like_arg2(rx_corr, tx.values/np.sum(tx.values), R=1)
     z = np.fft.fft(y)
     f = (np.fft.fftfreq(tx.shape[0], 1e-6))*-1
-    delay_array = np.arange(rx.delay.values[0] - tx.shape[0], delay_max + tx.shape[0])
-    range_delay_array= delay_array[0 : len(delay_array) - tx.shape[0]]
+    delay_array = np.arange(delay_min, delay_max)
 
-    mf_rx = xr.DataArray(z[0 : z.shape[0] - tx.shape[0]], coords=dict(t=rx.t.values, delay=('delay', range_delay_array, {'label': 'Delay (samples)'}), frequency=('frequency', f)), dims=('delay', 'frequency',), 
+    mf_rx = xr.DataArray(z[delay_min - (rx.delay.values[0] - tx.shape[0]) : delay_max - (rx.delay.values[0] - tx.shape[0]), :], coords=dict(t=rx.t.values, delay=('delay', delay_array, {'label': 'Delay (samples)'}), frequency=('frequency', f)), dims=('delay', 'frequency',), 
 name='mf_rx')
     mf_rx.attrs['center_frequencies'] = rx.center_frequencies
     return mf_rx
@@ -45,7 +44,7 @@ def is_there_a_meteor(data, snr_val, snr_idx, thres, vmin, vmax, pulse_num, fs):
             meteor_list.extend(info)
     return meteor_list 
 
-# work-in progress 
+# runs some statistics on the data and summaries them
 def summary(events):
     d = {}
     d['initial t'] = datetime_from_float(events['t'][0], 'ms')

@@ -51,8 +51,8 @@ def pulse_generator(ido, no, tmm, s0, s1, nch, ds=None):
         idmd = ido.read(ss, se, 'sweepid')
         for sp, sweepid in idmd.iteritems():
             # skip all but uncoded pulses for now
-            if sweepid != 300:
-                continue
+            #if sweepid != 300:
+                #continue
             try:
                 raster_table = rasters[sweepid]
             except KeyError:
@@ -201,19 +201,16 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     for k, (tx, rx) in enumerate(pulse_data):
 
-
         mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
 	snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
         max_snr = valargmax(snr_vals)[0]
         snr_point = np.unravel_index(valargmax(snr_vals)[1], (mf_rx.shape[0], mf_rx.shape[1]))
         meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, k, rx.sample_rate)
 
-        #saved_data[k, :] = snr_vals[:, snr_point[1]]
-
 	if meteor_list != []:
+	    print k
 	    c = list(clust(meteor_list))
             if c != []:
-		print c
 	        cluster_list.append(c)
                 for item in c:
 	            cluster_summary1 = mp.summary(item)
@@ -223,16 +220,12 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         for c in clustering.finish():
             yield c
     
-    #range_vals =(3e8*mf_rx.delay.values)/(2*rx.sample_rate)
     clusters = list(cluster_finish())
     cluster_list.append(clusters)
     for item in clusters:
-	print item
         cluster_summary = mp.summary(item)
         cluster_summary.to_csv(csvfile, header=False, index=False)
     return cluster_list, rx
-
-    #data_plotter(saved_data, 0, num_of_pulses, range_vals, times)
 
 if __name__ == "__main__":
     from argparse import ArgumentParser

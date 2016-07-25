@@ -19,7 +19,7 @@ med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.ppf(
 
 def interval_range(start, stop, step=1):
     iterable = iter(xrange(start, stop, step))
-    a = iterable.next()
+    a = b = iterable.next()
     for b in iterable:
         yield (a, b)
         a = b

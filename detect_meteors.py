@@ -190,36 +190,36 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
     cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate", "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
     with open(filename, "w") as csvfile:
         w = csv.DictWriter(csvfile, cols)
-	w.writeheader()
+        w.writeheader()
 
     csvfile = open(filename, "ab")
     cluster_list = []
 
     def clust(data):
-	for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
+        for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
             yield c
 
     for k, (tx, rx) in enumerate(pulse_data):
 
         mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
-	snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
+        snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
         max_snr = valargmax(snr_vals)[0]
         snr_point = np.unravel_index(valargmax(snr_vals)[1], (mf_rx.shape[0], mf_rx.shape[1]))
         meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, k, rx.sample_rate)
 
-	if meteor_list != []:
-	    print k
-	    c = list(clust(meteor_list))
+        if meteor_list != []:
+            print k
+            c = list(clust(meteor_list))
             if c != []:
-	        cluster_list.append(c)
+                cluster_list.append(c)
                 for item in c:
-	            cluster_summary1 = mp.summary(item)
+                    cluster_summary1 = mp.summary(item)
                     cluster_summary1.to_csv(csvfile, header=False, index=False)
 
     def cluster_finish():
         for c in clustering.finish():
             yield c
-    
+
     clusters = list(cluster_finish())
     cluster_list.append(clusters)
     for item in clusters:

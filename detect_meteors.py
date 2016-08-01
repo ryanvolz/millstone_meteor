@@ -120,7 +120,10 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
         yield tx, rx
 
 def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
-                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=15, min_samples=1, tscale=0.03, rscale=150, vscale=710.27, rmin=70, rmax=140, filename="cluster_summaries.txt"):
+        t0=None, t1=None, rxch='zenith-l', txch='tx-h',
+        snr_thresh=1, rmin_km=70, rmax_km=140, vmin_kps=7, vmax_kps=72,
+        eps=15, min_samples=1, tscale=0.03, rscale=150, vscale=710.27,
+    ):
     """Function to detect and summarize meteor head echoes.
 
 
@@ -152,10 +155,12 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         Transmitter channel.
 
     """
+    # set up reader objects for data and metadata
     rfo = drf.read_hdf5(rf_dir)
     ido = dmd.read_digital_metadata(id_dir)
     no = dmd.read_digital_metadata(noise_dir)
 
+    # infer time window to process based on bounds of data and metadata
     if t0 is None or t1 is None:
         bounds = []
         bounds.append(rfo.get_bounds(rxch))
@@ -179,52 +184,61 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         else:
             s1 = int(np.round(t1*fs))
 
+    # load pulse/coding information
     tmm = TimingModeManager.TimingModeManager()
     if os.path.exists('/tmp/tmm.hdf5'):
         tmm.loadFromHdf5('/tmp/tmm.hdf5', skip_lowlevel=True)
     else:
         tmm.loadFromHdf5(skip_lowlevel=True)
 
+    # initalize generator that steps through data pulse by pulse
     pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)
+
+    # initialize clustering object for grouping detections
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
-    cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate", "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
-    with open(filename, "w") as csvfile:
+
+    # initialize CSV file for saving meteor clusters
+    csvpath = os.path.join(output_dir, 'cluster_summaries.txt')
+    cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate",
+            "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
+    # overwrite any existing file and write CSV header
+    with open(csvpath, "wb") as csvfile:
         w = csv.DictWriter(csvfile, cols)
         w.writeheader()
 
-    csvfile = open(filename, "ab")
+    # re-open CSV file in append mode for storage
+    csvfile = open(csvpath, "ab")
+
     cluster_list = []
 
-    def clust(data):
-        for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
-            yield c
-
+    # loop that steps through data one pulse at a time
     for k, (tx, rx) in enumerate(pulse_data):
+        # matched filter
+        mf_rx = mp.matched_filter(tx, rx, rmin_km, rmax_km)
 
-        mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
-        snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
-        max_snr = valargmax(snr_vals)[0]
-        snr_point = np.unravel_index(valargmax(snr_vals)[1], (mf_rx.shape[0], mf_rx.shape[1]))
-        meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, k, rx.sample_rate)
+        # meteor signal detection
+        meteors = mp.detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps)
 
-        if meteor_list != []:
+        # clustering of detections into single meteor head echoes
+        for meteor in meteors:
             print k
-            c = list(clust(meteor_list))
-            if c != []:
-                cluster_list.append(c)
-                for item in c:
-                    cluster_summary1 = mp.summary(item)
-                    cluster_summary1.to_csv(csvfile, header=False, index=False)
+            new_clusters = clustering.addnext(pulse_num=k, **meteor)
+            cluster_list.extend(new_clusters)
+            for c in new_clusters:
+                # summarize head echo and save to a data file
+                cluster_summary = mp.summary(c)
+                cluster_summary.to_csv(csvfile, header=False, index=False)
 
-    def cluster_finish():
-        for c in clustering.finish():
-            yield c
-
-    clusters = list(cluster_finish())
-    cluster_list.append(clusters)
-    for item in clusters:
-        cluster_summary = mp.summary(item)
+    # tell clustering object that data is exhausted and to return any final clusters
+    new_clusters = clustering.finish()
+    cluster_list.extend(new_clusters)
+    for c in new_clusters:
+        # summarize head echo and save to a data file
+        cluster_summary = mp.summary(c)
         cluster_summary.to_csv(csvfile, header=False, index=False)
+
+    csvfile.close()
+
     return cluster_list, rx
 
 if __name__ == "__main__":
@@ -267,7 +281,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-cluster_list, rx = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
-                   args.t0, args.t1, args.rxch, args.txch)
+cluster_list, rx = detect_meteors(
+    args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+    args.t0, args.t1, args.rxch, args.txch,
+)
 
 

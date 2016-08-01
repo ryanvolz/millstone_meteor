@@ -7,18 +7,16 @@ import xarray as xr
 import scipy as sp
 import scipy.stats
 import os
-from collections import namedtuple
-import math
 import csv
 
-from time_utils import datetime_to_float
 import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
-import meteor_processing as mp
 from clustering import Clustering
-import meteor_plotting
 from valarg import valargmax
+from time_utils import datetime_to_float
+import meteor_processing as mp
+import meteor_plotting
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -199,15 +197,10 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     # initialize CSV file for saving meteor clusters
     csvpath = os.path.join(output_dir, 'cluster_summaries.txt')
-    cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate",
-            "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
-    # overwrite any existing file and write CSV header
-    with open(csvpath, "wb") as csvfile:
-        w = csv.DictWriter(csvfile, cols)
-        w.writeheader()
-
-    # re-open CSV file in append mode for storage
-    csvfile = open(csvpath, "ab")
+    csvfile = open(csvpath, "wb")
+    cols = mp.summarize_meteor()
+    csvwriter = csv.DictWriter(csvfile, cols)
+    csvwriter.writeheader()
 
     cluster_list = []
 
@@ -226,16 +219,16 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
             cluster_list.extend(new_clusters)
             for c in new_clusters:
                 # summarize head echo and save to a data file
-                cluster_summary = mp.summary(c)
-                cluster_summary.to_csv(csvfile, header=False, index=False)
+                cluster_summary = mp.summarize_meteor(c)
+                csvwriter.writerow(cluster_summary)
 
     # tell clustering object that data is exhausted and to return any final clusters
     new_clusters = clustering.finish()
     cluster_list.extend(new_clusters)
     for c in new_clusters:
         # summarize head echo and save to a data file
-        cluster_summary = mp.summary(c)
-        cluster_summary.to_csv(csvfile, header=False, index=False)
+        cluster_summary = mp.summarize_meteor(c)
+        csvwriter.writerow(cluster_summary)
 
     csvfile.close()
 

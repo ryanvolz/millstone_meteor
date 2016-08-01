@@ -1,11 +1,10 @@
 import numpy as np
 import math
 import xarray as xr
-import pandas as pd
 from scipy.constants import c
 
-from time_utils import datetime_to_float, datetime_from_float
 import rkl
+from time_utils import datetime_to_float, datetime_from_float
 
 def matched_filter(tx, rx, rmin_km, rmax_km):
     """Frequency bank of matched filters for a single pulse.
@@ -61,8 +60,6 @@ def matched_filter(tx, rx, rmin_km, rmax_km):
     )
     return mf_rx
 
-# meteor signal detection for a single pulse
-# need to include range in output
 def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
     """Meteor signal detection for a single pulse.
 
@@ -88,25 +85,35 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
         return [meteor]
     return None
 
-# runs some statistics on the data and summaries them
-def summary(events):
+def summarize_meteor(events):
+    """Calculates some statistics on a head echo cluster and summarizes it."""
+    cols = ['duration', 'inital r', 'initial t', 'lstsq', 'overall range rate',
+            'range rates', 'range rates var', 'snr mean', 'snr peak', 'snr var']
+    if events is None:
+        return cols
+
+    N = len(events.index)
+    t = events.t.values
+    r = events.r.values
+    v = events.v.values
+    snr = events.snr.values
+
     d = {}
-    d['initial t'] = datetime_from_float(events['t'][0], 'ms')
-    t = events['t'][events['t'].shape[0] - 1] - events['t'][0]
-    d['duration'] = t
-    d['initial r'] = events['r'][0]
-    d['overall range rate'] = (events['r'][0] - events['r'][events['r'].shape[0] - 1])/t
-    d['snr mean'] = np.mean(events['snr'])
-    d['snr var'] = np.var(events['snr'])
-    d['snr peak'] = np.max(events['snr'])
+    d['initial t'] = datetime_from_float(t, 'ms')
+    dt = t[-1] - t[0]
+    d['duration'] = dt
+    d['initial r'] = r[0]
+    d['overall range rate'] = (r[0] - r[-1])/dt
+    d['snr mean'] = np.mean(snr)
+    d['snr var'] = np.var(snr)
+    d['snr peak'] = np.max(snr)
     d['range rates'] = []
-    d['range rates'].append(list(events['v'].values))
-    d['range rates var'] = np.var(events['v'])
-    A1 = np.append(np.ones(events['t'].shape[0]), np.zeros(events['r'].shape[0]))      
-    A2 = np.append(events['t'] - events['t'][0], np.ones(events['r'].shape[0]))
+    d['range rates'].append(list(v))
+    d['range rates var'] = np.var(v)
+    A1 = np.append(np.ones(N), np.zeros(N))
+    A2 = np.append(t - t[0], np.ones(N))
     A = np.vstack([A1, A2]).T
-    n = np.linalg.lstsq(A, np.append(events['r'], events['v']))
+    r0, v0 = np.linalg.lstsq(A, np.append(r, v))
     d['lstsq'] = []
     d['lstsq'].append(n[0])
-    cluster_summary = pd.DataFrame(d)
-    return cluster_summary
+    return d

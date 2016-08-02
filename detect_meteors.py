@@ -7,6 +7,7 @@ import xarray as xr
 import scipy as sp
 import scipy.stats
 import os
+import sys
 import csv
 
 import digital_rf_hdf5 as drf
@@ -203,6 +204,11 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     # loop that steps through data one pulse at a time
     for k, (tx, rx) in enumerate(pulse_data):
+        # marching periods as status update
+        if (k % 100) == 0:
+            sys.stdout.write('.')
+            sys.stdout.flush()
+
         # matched filter
         mf_rx = mp.matched_filter(tx, rx, rmin_km, rmax_km)
 
@@ -262,18 +268,61 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         '-c', '--rxch', default='zenith-l',
-        help='Receiver channel to process.',
+        help='Receiver channel to process. (default: %(default)s)',
     )
     parser.add_argument(
         '-t', '--txch', default='tx-h',
-        help='Transmitter channel.',
+        help='Transmitter channel. (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--snr_thresh', type=float, default=1,
+        help='SNR detection threshold. (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--rmin', type=float, default=70,
+        help='Lower boundary of range window for detection (km). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--rmax', type=float, default=140,
+        help='Upper boundary of range window for detection (km). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--vmin', type=float, default=7,
+        help='Lower limit of range rate for detection (km/s). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--vmax', type=float, default=72,
+        help='Upper limit of range rate for detection (km/s). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--eps', type=float, default=15,
+        help='Size of neighborhood for purposes of clustering. (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--min_samples', type=float, default=1,
+        help='Minimum number of points in neighborhood that constitutes a cluster. (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--tscale', type=float, default=0.03,
+        help='Distance scale of time units (s). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--rscale', type=float, default=150,
+        help='Distance scale of range units (m). (default: %(default)s)',
+    )
+    parser.add_argument(
+        '--vscale', type=float, default=710.27,
+        help='Distance scale of range rate units (m/s). (default: %(default)s)',
     )
 
-    args = parser.parse_args()
+    a = parser.parse_args()
 
 cluster_list, rx = detect_meteors(
-    args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
-    args.t0, args.t1, args.rxch, args.txch,
+    a.rf_dir, a.id_dir, a.noise_dir, a.output_dir,
+    a.t0, a.t1, a.rxch, a.txch,
+    snr_thresh=a.snr_thresh, rmin_km=a.rmin, rmax_km=a.rmax,
+    vmin_kps=a.vmin, vmax_kps=a.vmax, eps=a.eps, min_samples=a.min_samples,
+    tscale=a.tscale, rscale=a.rscale, vscale=a.vscale,
 )
 
 

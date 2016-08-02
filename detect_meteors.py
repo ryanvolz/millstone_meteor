@@ -10,6 +10,7 @@ import os
 from collections import namedtuple
 import math
 import csv
+import matplotlib.pyplot as plt
 
 from time_utils import datetime_to_float
 import digital_rf_hdf5 as drf
@@ -17,7 +18,7 @@ import digital_metadata as dmd
 import TimingModeManager
 import meteor_processing as mp
 from clustering import Clustering
-import meteor_plotting
+import meteor_plotting as mplt
 from valarg import valargmax
 
 noise_pwr_rv = sp.stats.chi2(2)
@@ -120,7 +121,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
         yield tx, rx
 
 def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
-                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=15, min_samples=1, tscale=0.03, rscale=150, vscale=710.27, rmin=70, rmax=140, filename="cluster_summaries.txt"):
+                   t0=None, t1=None, rxch='zenith-l', txch='tx-h', vmin=7, vmax=72, snr_thres=1, eps=20, min_samples=4, tscale=0.002, rscale=150, vscale=3787, rmin=70, rmax=140, filename="cluster_summaries.csv"):
     """Function to detect and summarize meteor head echoes.
 
 
@@ -187,20 +188,18 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch)
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
-    cols = ["duration", "inital r", "initial t", "lstsq", "overall range rate", "range rates", "range rates var", "snr mean", "snr peak", "snr var"]
+    cols = ["duration", "end_t", "pulse_num", "snr_mean", "snr_peak", "snr_var", "rcs_mean", "rcs_peak", "rcs_var", "range", "range_var", "range_rate", "range_rate var", "start_t"]
     with open(filename, "w") as csvfile:
         w = csv.DictWriter(csvfile, cols)
 	w.writeheader()
 
     csvfile = open(filename, "ab")
-    cluster_list = []
 
     def clust(data):
 	for c in clustering.addnext(t=data[0], r=data[1], v=data[3], snr=data[4], pulse_num=data[5]):
             yield c
 
     for k, (tx, rx) in enumerate(pulse_data):
-
         mf_rx = mp.matched_filter(tx, rx, rmin, rmax)
 	snr_vals = (np.abs(mf_rx.values)**2)/rx.noise_power
         max_snr = valargmax(snr_vals)[0]
@@ -208,10 +207,8 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         meteor_list = mp.is_there_a_meteor(mf_rx, max_snr, snr_point, snr_thres, vmin, vmax, k, rx.sample_rate)
 
 	if meteor_list != []:
-	    print k
 	    c = list(clust(meteor_list))
             if c != []:
-	        cluster_list.append(c)
                 for item in c:
 	            cluster_summary1 = mp.summary(item)
                     cluster_summary1.to_csv(csvfile, header=False, index=False)
@@ -221,11 +218,10 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
             yield c
     
     clusters = list(cluster_finish())
-    cluster_list.append(clusters)
     for item in clusters:
         cluster_summary = mp.summary(item)
         cluster_summary.to_csv(csvfile, header=False, index=False)
-    return cluster_list, rx
+    return rx, tx
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -267,7 +263,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-cluster_list, rx = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
+rx, tx = detect_meteors(args.rf_dir, args.id_dir, args.noise_dir, args.output_dir,
                    args.t0, args.t1, args.rxch, args.txch)
 
 

@@ -13,10 +13,7 @@ import digital_rf_hdf5 as drf
 import digital_metadata as dmd
 import TimingModeManager
 from clustering import Clustering
-from valarg import valargmax
-from time_utils import datetime_to_float
 import meteor_processing as mp
-import meteor_plotting
 
 noise_pwr_rv = sp.stats.chi2(2)
 #med_pwr_est_factor = noise_pwr_rv.mean()/noise_pwr_rv.median()
@@ -197,8 +194,8 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     # initialize CSV file for saving meteor clusters
     csvpath = os.path.join(output_dir, 'cluster_summaries.txt')
-    csvfile = open(csvpath, "wb")
-    cols = mp.summarize_meteor()
+    csvfile = open(csvpath, "wb", 1) # 1 => use line buffering
+    cols = mp.summarize_meteor(None)
     csvwriter = csv.DictWriter(csvfile, cols)
     csvwriter.writeheader()
 

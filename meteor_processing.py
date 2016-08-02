@@ -5,6 +5,7 @@ from scipy.constants import c
 
 import rkl
 from time_utils import datetime_to_float, datetime_from_float
+from valarg import valargmax
 
 def matched_filter(tx, rx, rmin_km, rmax_km):
     """Frequency bank of matched filters for a single pulse.
@@ -19,12 +20,12 @@ def matched_filter(tx, rx, rmin_km, rmax_km):
 
     # convert range bounds to bounds on the delay in number of samples
     delay_min = int(np.floor((2*fs*rmin_km*1000)/c))
-    delay_max = int(np.ceil((2*fs*rmax_km*1000)/c))
+    delay_max = int(np.floor((2*fs*rmax_km*1000)/c)) + 1 # +1 so non-inclusive
 
     # indexes into rx array that correspond to desired delay window
     rx_start = max(delay_min - rx.delay.values[0], 0)
-    # need len(tx) samples past delay_max so full correlation can be done
-    rx_stop = min(delay_max + tx.shape[0] - rx.delay.values[0], rx.shape[0])
+    # want extra len(tx)-1 samples past delay_max so full correlation can be done
+    rx_stop = min(delay_max + (tx.shape[0] - 1) - rx.delay.values[0], rx.shape[0])
 
     rx_corr = rx.values[rx_start:rx_stop]
     # normalize tx data so that noise level is the same after matched filtering
@@ -33,20 +34,23 @@ def matched_filter(tx, rx, rmin_km, rmax_km):
     # perform matched filter calculation as (delay and multiply) + (FFT)
     y = rkl.delay_multiply.delaymult_like_arg2(rx_corr, tx_normalized, R=1)
     z = np.fft.fft(y)
-    # select matched filtered values that have full correlation with tx only
-    # by removing len(tx)-1 partial correlation values from beginning and end
-    L = tx.shape[0] - 1
-    z_valid = z[L:-L, :]
 
     # calculate coordinates for matched filtered data
-    delays = np.arange(rx_start + rx.delay.values[0],
-                          rx_stop - tx.shape[0] + rx.delay.values[0])
-    ranges = delay_idx*c/(2*fs)
+    delays = np.arange(-(tx.shape[0] - 1), rx_corr.shape[0]) + rx.delay.values[rx_start]
     freqs = np.fft.fftfreq(tx.shape[0], fs)
-    vels = -freq_idx*c/(2*fc) # positive frequency shift is negative range rate
+
+    # subset matched filtered data to desired delay bounds
+    mfrx_start = max(delay_min - delays[0], 0)
+    mfrx_stop = min(delay_max - delays[0], delays.shape[0])
+    delays = delays[mfrx_start:mfrx_stop]
+    z_subset = z[mfrx_start:mfrx_stop, :]
+
+    # calculate derived coordinates
+    ranges = delays*c/(2*fs)
+    vels = -freqs*c/(2*fc) # positive frequency shift is negative range rate
 
     mf_rx = xr.DataArray(
-        z_valid,
+        z_subset,
         coords=dict(
             t=rx.t.values,
             delay=('delay', delays, {'label': 'Delay (samples)'}),
@@ -66,7 +70,7 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
     Returns a list of detected meteor points in time-range-velocity space.
 
     """
-    snr_vals = (mf_rx.real**2 + mf_rx.imag**2)/mf_rx.noise_power
+    snr_vals = (mf_rx.values.real**2 + mf_rx.values.imag**2)/mf_rx.noise_power
 
     # for now, only detect based on highest SNR point in delay-frequency space
     snr, snr_idx = valargmax(snr_vals)
@@ -83,7 +87,7 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
             snr=snr,
         )
         return [meteor]
-    return None
+    return []
 
 def summarize_meteor(events):
     """Calculates some statistics on a head echo cluster and summarizes it."""

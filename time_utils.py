@@ -14,10 +14,10 @@ __all__ = ['datetime_from_float', 'datetime_to_float', 'timestamp_strftime']
 
 def datetime_from_float(t, unit, epoch=None):
     """Convert an array of floats to datetime64.
-    
+
     It is assumed that the float represents time in seconds since the
     given datetime64 epoch. If epoch is None, np.datetime64(0) is used.
-    
+
     """
     if epoch is None:
         epoch = np.datetime64(0, 's')
@@ -27,10 +27,10 @@ def datetime_from_float(t, unit, epoch=None):
 
 def datetime_to_float(t, epoch=None):
     """Convert a datetime64 array to floating point.
-    
+
     The floating point representation gives the time in seconds since
     the given datetime64 epoch. If epoch is None, np.datetime64(0) is used.
-    
+
     """
     if epoch is None:
         epoch = np.datetime64(0, 's')

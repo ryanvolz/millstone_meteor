@@ -6,7 +6,8 @@ from time_utils import datetime_to_float
 #plotting windows
 def plot(mf, r, t, x, n, header):
     plt.figure()
-    rtiplot(10*np.log10(mf), t, r/1e3, title=header, ylabel='Range (km)', clabel='SNR (dB)', vmin=-10, vmax=10)
+    rtiplot(10*np.log10(mf), t, r/1e3, title=header,
+            ylabel='Range (km)', clabel='SNR (dB)', vmin=-10, vmax=10)
     plt.tight_layout()
     plt.savefig(n+str(x))
 
@@ -57,7 +58,3 @@ def hist_snr(data):
     plt.title('SNR Distribution')
     plt.grid()
     plt.savefig('hist_snr')
-
-
-   
-        

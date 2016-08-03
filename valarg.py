@@ -20,7 +20,7 @@ def valargcmp(arr, axis=None, fun=np.argmax):
         idx = list(np.ix_(*[xrange(k) for k in args.shape]))
         idx.insert(axis, args)
         vals = arr[idx].squeeze()
-    
+
     return vals, args
 
 def valargmax(arr, axis=None):

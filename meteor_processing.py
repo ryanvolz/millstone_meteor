@@ -91,10 +91,12 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
 
 def summarize_meteor(events):
     """Calculates some statistics on a head echo cluster and summarizes it."""
-    cols = ['start_t', 'end_t', 'duration', 'n_detections', 'pulse_num',
-            'snr_mean', 'snr_var', 'snr_peak',
-            'rcs_mean', 'rcs_peak', 'rcs_var',
-            'range', 'range_var', 'range_rate', 'range_rate_var']
+    cols = [
+        'start_t', 'end_t', 'duration', 'pulse_num', 'n_detections',
+        'range', 'range_var', 'range_rate', 'range_rate_var',
+        'snr_mean', 'snr_peak', 'snr_var',
+        'rcs_mean', 'rcs_peak', 'rcs_var',
+    ]
     if events is None:
         return cols
 

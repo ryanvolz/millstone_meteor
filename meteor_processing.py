@@ -37,7 +37,7 @@ def matched_filter(tx, rx, rmin_km, rmax_km):
 
     # calculate coordinates for matched filtered data
     delays = np.arange(-(tx.shape[0] - 1), rx_corr.shape[0]) + rx.delay.values[rx_start]
-    freqs = np.fft.fftfreq(tx.shape[0], fs)
+    freqs = np.fft.fftfreq(tx.shape[0], 1/fs)
 
     # subset matched filtered data to desired delay bounds
     mfrx_start = max(delay_min - delays[0], 0)
@@ -118,7 +118,8 @@ def summarize_meteor(events):
     A1 = np.append(np.ones(N), np.zeros(N))
     A2 = np.append(t - t[0], np.ones(N))
     A = np.vstack([A1, A2]).T
-    r0, v0 = np.linalg.lstsq(A, np.append(r, v))
+    x, residuals, rank, s = np.linalg.lstsq(A, np.append(r, v))
+    r0, v0 = x
     d['range'] = r0
     d['range_var'] = np.var(r)
     d['range_rate'] = v0

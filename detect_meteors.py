@@ -118,7 +118,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
 def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         t0=None, t1=None, rxch='zenith-l', txch='tx-h',
         snr_thresh=1, rmin_km=70, rmax_km=140, vmin_kps=7, vmax_kps=72,
-        eps=15, min_samples=1, tscale=0.03, rscale=150, vscale=710.27,
+        eps=0.5, min_samples=5, tscale=1, rscale=1, vscale=1,
     ):
     """Function to detect and summarize meteor head echoes.
 
@@ -291,15 +291,15 @@ if __name__ == "__main__":
         help='Upper limit of range rate for detection (km/s). (default: %(default)s)',
     )
     parser.add_argument(
-        '--eps', type=float, default=15,
+        '--eps', type=float, default=20,
         help='Size of neighborhood for purposes of clustering. (default: %(default)s)',
     )
     parser.add_argument(
-        '--min_samples', type=float, default=1,
+        '--min_samples', type=float, default=4,
         help='Minimum number of points in neighborhood that constitutes a cluster. (default: %(default)s)',
     )
     parser.add_argument(
-        '--tscale', type=float, default=0.03,
+        '--tscale', type=float, default=0.002,
         help='Distance scale of time units (s). (default: %(default)s)',
     )
     parser.add_argument(
@@ -307,7 +307,7 @@ if __name__ == "__main__":
         help='Distance scale of range units (m). (default: %(default)s)',
     )
     parser.add_argument(
-        '--vscale', type=float, default=710.27,
+        '--vscale', type=float, default=3787,
         help='Distance scale of range rate units (m/s). (default: %(default)s)',
     )
 

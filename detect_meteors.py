@@ -200,8 +200,6 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
     csvwriter = csv.DictWriter(csvfile, cols)
     csvwriter.writeheader()
 
-    cluster_list = []
-
     # loop that steps through data one pulse at a time
     for k, (tx, rx) in enumerate(pulse_data):
         # marching periods as status update
@@ -217,25 +215,23 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
         # clustering of detections into single meteor head echoes
         for meteor in meteors:
-            print k
+            sys.stdout.write('*')
+            sys.stdout.flush()
             new_clusters = clustering.addnext(pulse_num=k, **meteor)
-            cluster_list.extend(new_clusters)
             for c in new_clusters:
+                sys.stdout.write('{0}'.format(c.cluster.values[0]))
                 # summarize head echo and save to a data file
                 cluster_summary = mp.summarize_meteor(c)
                 csvwriter.writerow(cluster_summary)
 
     # tell clustering object that data is exhausted and to return any final clusters
     new_clusters = clustering.finish()
-    cluster_list.extend(new_clusters)
     for c in new_clusters:
         # summarize head echo and save to a data file
         cluster_summary = mp.summarize_meteor(c)
         csvwriter.writerow(cluster_summary)
 
     csvfile.close()
-
-    return cluster_list, rx
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
@@ -317,7 +313,7 @@ if __name__ == "__main__":
 
     a = parser.parse_args()
 
-cluster_list, rx = detect_meteors(
+detect_meteors(
     a.rf_dir, a.id_dir, a.noise_dir, a.output_dir,
     a.t0, a.t1, a.rxch, a.txch,
     snr_thresh=a.snr_thresh, rmin_km=a.rmin, rmax_km=a.rmax,

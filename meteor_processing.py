@@ -91,8 +91,9 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
 
 def summarize_meteor(events):
     """Calculates some statistics on a head echo cluster and summarizes it."""
-    cols = ['start_t', 'end_t', 'duration', 'snr_mean', 'snr_var', 'snr_peak',
-            'rcs_mean', 'rcs_peak', 'rcs_var', 'pulse_num',
+    cols = ['start_t', 'end_t', 'duration', 'n_detections', 'pulse_num',
+            'snr_mean', 'snr_var', 'snr_peak',
+            'rcs_mean', 'rcs_peak', 'rcs_var',
             'range', 'range_var', 'range_rate', 'range_rate_var']
     if events is None:
         return cols
@@ -108,13 +109,14 @@ def summarize_meteor(events):
     d['start_t'] = datetime_from_float(t[0], 'ms')
     d['end_t'] = datetime_from_float(t[-1], 'ms')
     d['duration'] = t[-1] - t[0]
+    d['n_detections'] = N
+    d['pulse_num'] = events.pulse_num.values[0]
     d['snr_mean'] = np.mean(snr)
     d['snr_var'] = np.var(snr)
     d['snr_peak'] = np.max(snr)
     d['rcs_mean'] = np.mean(rcs)
     d['rcs_var'] = np.var(rcs)
     d['rcs_peak'] = np.max(rcs)
-    d['pulse_num'] = events.pulse_num.values[0]
     A1 = np.append(np.ones(N), np.zeros(N))
     A2 = np.append(t - t[0], np.ones(N))
     A = np.vstack([A1, A2]).T

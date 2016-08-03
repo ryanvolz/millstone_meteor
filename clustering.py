@@ -137,11 +137,11 @@ class Clustering(object):
                 for ov in self._visited:
                     if ov['cluster'][0] == merge_clust:
                         ov['cluster'] = pclust
-                if self.clusters.has_key(merge_clust):
-                    oldrows = self.clusters.pop(merge_clust)
+                if self.activeclusters.has_key(merge_clust):
+                    oldrows = self.activeclusters.pop(merge_clust)
                     for orow in oldrows:
                         orow['cluster'] = pclust
-                    self.clusters[pclust] = oldrows
+                    self.activeclusters[pclust] = oldrows
 
             # p is core, so add all unclustered, non-core neighbors to same cluster
             for o in noncore_neighb:

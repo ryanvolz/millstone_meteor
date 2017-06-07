@@ -119,6 +119,7 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         t0=None, t1=None, rxch='zenith-l', txch='tx-h',
         snr_thresh=1, rmin_km=70, rmax_km=140, vmin_kps=7, vmax_kps=72,
         eps=0.5, min_samples=5, tscale=1, rscale=1, vscale=1,
+        debug=False,
     ):
     """Function to detect and summarize meteor head echoes.
 
@@ -221,7 +222,7 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
             for c in new_clusters:
                 sys.stdout.write('{0}'.format(c.cluster.values[0]))
                 # summarize head echo and save to a data file
-                cluster_summary = mp.summarize_meteor(c)
+                cluster_summary = mp.summarize_meteor(c, debug=debug)
                 csvwriter.writerow(cluster_summary)
 
     # tell clustering object that data is exhausted and to return any final clusters
@@ -310,15 +311,18 @@ if __name__ == "__main__":
         '--vscale', type=float, default=3787,
         help='Distance scale of range rate units (m/s). (default: %(default)s)',
     )
+    parser.add_argument(
+        '--debug', action='store_true',
+        help='Turn on debugging (activates interactive plots, etc.).',
+    )
 
     a = parser.parse_args()
 
-detect_meteors(
-    a.rf_dir, a.id_dir, a.noise_dir, a.output_dir,
-    a.t0, a.t1, a.rxch, a.txch,
-    snr_thresh=a.snr_thresh, rmin_km=a.rmin, rmax_km=a.rmax,
-    vmin_kps=a.vmin, vmax_kps=a.vmax, eps=a.eps, min_samples=a.min_samples,
-    tscale=a.tscale, rscale=a.rscale, vscale=a.vscale,
-)
-
+    detect_meteors(
+        a.rf_dir, a.id_dir, a.noise_dir, a.output_dir,
+        a.t0, a.t1, a.rxch, a.txch,
+        snr_thresh=a.snr_thresh, rmin_km=a.rmin, rmax_km=a.rmax,
+        vmin_kps=a.vmin, vmax_kps=a.vmax, eps=a.eps, min_samples=a.min_samples,
+        tscale=a.tscale, rscale=a.rscale, vscale=a.vscale, debug=a.debug,
+    )
 

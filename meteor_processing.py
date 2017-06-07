@@ -89,7 +89,7 @@ def detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps):
         return [meteor]
     return []
 
-def summarize_meteor(events):
+def summarize_meteor(events, debug=False):
     """Calculates some statistics on a head echo cluster and summarizes it."""
     cols = [
         'start_t', 'end_t', 'duration', 'pulse_num', 'n_detections',
@@ -119,14 +119,38 @@ def summarize_meteor(events):
     d['rcs_mean'] = np.mean(rcs)
     d['rcs_var'] = np.var(rcs)
     d['rcs_peak'] = np.max(rcs)
+
     A1 = np.append(np.ones(N), np.zeros(N))
     A2 = np.append(t - t[0], np.ones(N))
     A = np.vstack([A1, A2]).T
-    x, residuals, rank, s = np.linalg.lstsq(A, np.append(r, v))
+    y = np.append(r, v)
+    x, residuals, rank, s = np.linalg.lstsq(A, y)
     r0, v0 = x
     d['range'] = r0
     d['range_var'] = np.var(r)
     d['range_rate'] = v0
     d['range_rate_var'] = np.var(v)
+
+    if debug:
+        yhat = np.dot(A, x)
+        import matplotlib
+        import matplotlib.pyplot as plt
+        formatter = matplotlib.ticker.ScalarFormatter(useOffset=False)
+        fig, axarr = plt.subplots(2, 1)
+        axarr[0].plot(t - t[0], r/1e3, '.b', label='Data')
+        axarr[0].hold(True)
+        axarr[0].plot(t - t[0], yhat[:N]/1e3, 'or', label='Fit')
+        axarr[0].yaxis.set_major_formatter(formatter)
+        axarr[0].legend()
+        axarr[0].set_ylabel('Range (km)')
+        axarr[1].plot(t - t[0], v/1e3, '.b', label='Data')
+        axarr[1].hold(True)
+        axarr[1].plot(t - t[0], yhat[N:]/1e3, 'or', label='Fit')
+        axarr[1].yaxis.set_major_formatter(formatter)
+        axarr[1].legend()
+        axarr[1].set_ylabel('Range Rate (km/s)')
+        axarr[1].set_xlabel('Time (s)')
+        plt.tight_layout()
+        plt.show()
 
     return d

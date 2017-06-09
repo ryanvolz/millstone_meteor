@@ -15,7 +15,7 @@ def matched_filter(tx, rx, rmin_km, rmax_km):
     Output mf_rx = 2D array (delay, frequency).
 
     """
-    fs = rx.sample_rate
+    fs = rx.samples_per_second
     fc = rx.center_frequencies
 
     # convert range bounds to bounds on the delay in number of samples

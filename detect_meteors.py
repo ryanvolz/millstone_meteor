@@ -10,8 +10,7 @@ import os
 import sys
 import csv
 
-import digital_rf_hdf5 as drf
-import digital_metadata as dmd
+import digital_rf as drf
 import TimingModeManager
 from clustering import Clustering
 import meteor_processing as mp
@@ -68,11 +67,23 @@ def pulse_generator(ido, no, tmm, s0, s1, nch, ds=None):
             yield sp+offset, sweepid, raster_table, noise_dict
 
 def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch):
-    rx_attrs = {k: v.value for k, v, in rfo.get_metadata(rxch).iteritems()}
-    tx_attrs = {k: v.value for k, v, in rfo.get_metadata(txch).iteritems()}
+    rx_attrs = rfo.get_digital_rf_metadata(rxch)
+    tx_attrs = rfo.get_digital_rf_metadata(txch)
 
-    rxfs = rx_attrs['sample_rate']
-    txfs = tx_attrs['sample_rate']
+    for ch, attrs in zip([rxch, txch], [rx_attrs, tx_attrs]):
+        mdo = rfo.get_digital_metadata(ch)
+        md_bounds = mdo.get_bounds()
+        md_dict = mdo.read(md_bounds[0], md_bounds[1])
+        md_idx = sorted(md_dict.keys())
+        # get index into md_idx so that md_idx[md_loc] is less than
+        # or equal to sstart and md_idx[md_loc] is greater than sstart
+        # (this gives the metadata value assuming a forward fill)
+        md_loc = np.searchsorted(md_idx, s0, side='right') - 1
+        md = md_dict[md_idx[md_loc]]
+        attrs.update(md)
+
+    rxfs = rx_attrs['samples_per_second']
+    txfs = tx_attrs['samples_per_second']
 
     nch = rxch.split('-')[0]
 
@@ -153,9 +164,9 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
 
     """
     # set up reader objects for data and metadata
-    rfo = drf.read_hdf5(rf_dir)
-    ido = dmd.read_digital_metadata(id_dir)
-    no = dmd.read_digital_metadata(noise_dir)
+    rfo = drf.DigitalRFReader(rf_dir)
+    ido = drf.DigitalMetadataReader(id_dir)
+    no = drf.DigitalMetadataReader(noise_dir)
 
     # infer time window to process based on bounds of data and metadata
     if t0 is None or t1 is None:
@@ -169,17 +180,17 @@ def detect_meteors(rf_dir, id_dir, noise_dir, output_dir,
         ss = np.max(bounds[:, 0])
         se = np.min(bounds[:, 1])
 
-        fs = rfo.get_metadata(rxch)['sample_rate'].value
+        fs = rfo.get_digital_rf_metadata(rxch)['samples_per_second']
 
-        if t0 is None:
-            s0 = ss
-        else:
-            s0 = int(np.round(t0*fs))
+    if t0 is None:
+        s0 = ss
+    else:
+        s0 = int(np.uint64(t0*fs))
 
-        if t1 is None:
-            s1 = se
-        else:
-            s1 = int(np.round(t1*fs))
+    if t1 is None:
+        s1 = se
+    else:
+        s1 = int(np.uint64(t1*fs))
 
     # load pulse/coding information
     tmm = TimingModeManager.TimingModeManager()

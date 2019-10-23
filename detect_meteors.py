@@ -7,6 +7,7 @@ import csv
 import datetime
 import os
 import sys
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -54,10 +55,13 @@ def pulse_generator(ido, tmm, s0, s1, ds=None, offsets=None):
     for ss, se in interval_range(s0, s1, ds):
         idmd = ido.read(ss, se, "sweepid")
         for ks, sweepid in idmd.items():
-            try:
-                raster_table = rasters[sweepid]
-            except KeyError:
-                sweep = tmm.getTimingSweepByID(sweepid)
+            raster_table = rasters.get(sweepid, None)
+            if raster_table is None:
+                try:
+                    sweep = tmm.getTimingSweepByID(sweepid)
+                except KeyError:
+                    traceback.print_exc()
+                    continue
                 code = sweep.getCodeObject()
                 raster_table = code.getRasterTable()
                 rasters[sweepid] = raster_table
@@ -161,13 +165,14 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=None):
                 * np.median(noise_dec.real ** 2 + noise_dec.imag ** 2)
                 * float(rxfs / 100e3)
             )
+            # FUTURE WORK: would prefer not having to average noise over pulses here
             noise_ests[s] = noise_est
             for samp in list(noise_ests.keys()):
                 if (s - samp) / rxfs > 1.0:
                     noise_ests.pop(samp)
                 else:
                     break
-            noise = dict(noise_power=sum(noise_ests.values()) / len(noise_ests))
+            noise = dict(noise_power=np.median(noise_ests.values()))
 
         tx_raster = (
             int(np.round(raster["tx"][0] * txfs / 1e9)),
@@ -187,6 +192,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=None):
             s + rx_raster[0], rx_raster[1] - rx_raster[0], rxch
         )
 
+        # FUTURE WORK: would prefer to use a Dataset here with tx, rx, noise as arrays
         tx_attrs.update(sweepid=sweepid)
         tx = xr.DataArray(
             tx_data,

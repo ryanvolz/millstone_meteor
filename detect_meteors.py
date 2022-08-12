@@ -172,7 +172,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=None):
                     noise_ests.pop(samp)
                 else:
                     break
-            noise = dict(noise_power=np.median(noise_ests.values()))
+            noise = dict(noise_power=np.median(list(noise_ests.values())))
 
         tx_raster = (
             int(np.round(raster["tx"][0] * txfs / 1e9)),

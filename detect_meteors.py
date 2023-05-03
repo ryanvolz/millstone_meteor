@@ -401,7 +401,7 @@ def detect_meteors(
 
             timestr = np.datetime_as_string(curwrite_t)
             timestr = timestr.replace(":", "-").replace(" ", "_")
-            fname = "mf@{t}.nc".format(t=timestr)
+            fname = "mf@{t}.h5".format(t=timestr)
             filepath = os.path.join(output_dir, "mf_{ch}".format(ch=rxch), fname)
 
             save_data.to_netcdf(
@@ -426,7 +426,7 @@ def detect_meteors(
 
     timestr = np.datetime_as_string(curwrite_t, unit="s")
     timestr = timestr.replace(":", "-").replace(" ", "_")
-    fname = "mf@{t}.nc".format(t=timestr)
+    fname = "mf@{t}.h5".format(t=timestr)
     filepath = os.path.join(output_dir, "mf_{ch}".format(ch=rxch), fname)
 
     save_data.to_netcdf(

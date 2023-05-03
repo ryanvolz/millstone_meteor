@@ -139,7 +139,7 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
             noise_raster = tuple(
                 int(np.round(ks * rxfs / 1e9)) for ks in raster["noise"]
             )
-            noise_data = rfo.read_vector_c81d(
+            noise_data = rfo.read_vector_1d(
                 s + noise_raster[0], noise_raster[1] - noise_raster[0], rxch
             )
             noise_pwr = noise_data.real ** 2 + noise_data.imag ** 2
@@ -173,7 +173,7 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
             int(np.round(raster["tx"][0] * txfs / 1e9)),
             int(np.round(raster["tx"][1] * txfs / 1e9)),
         )
-        tx_data = rfo.read_vector_c81d(
+        tx_data = rfo.read_vector_1d(
             int(np.round(s * txfs / rxfs)) + tx_raster[0],
             tx_raster[1] - tx_raster[0],
             txch,
@@ -183,7 +183,7 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
             int(np.round(raster["blank"][1] * rxfs / 1e9)),
             int(np.round(raster["signal"][1] * rxfs / 1e9)),
         )
-        rx_data = rfo.read_vector_c81d(
+        rx_data = rfo.read_vector_1d(
             s + rx_raster[0], rx_raster[1] - rx_raster[0], rxch
         )
 

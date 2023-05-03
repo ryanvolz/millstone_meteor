@@ -17,7 +17,6 @@ import xarray as xr
 
 import digital_rf as drf
 import meteor_processing as mp
-import TimingModeManager
 from clustering import Clustering
 
 import warnings
@@ -42,7 +41,7 @@ def interval_range(start, stop, step=1):
     yield (b, stop)
 
 
-def pulse_generator(ido, tmm, s0, s1, ds=None, offsets=None):
+def pulse_generator(ido, tmm_hdf5, s0, s1, ds=None, offsets=None):
     fs = ido.get_samples_per_second()
     if ds is None:
         # needs to be long enough to get at least one noise metadata sample
@@ -51,20 +50,16 @@ def pulse_generator(ido, tmm, s0, s1, ds=None, offsets=None):
     if offsets is None:
         offsets = {}
     rasters = {}
+    with h5py.File(tmm_hdf5, "r") as tmm_file:
+        for code_acronym, code_group in tmm_file["codes"].items():
+            rasters[code_group.attrs["base_id_code"]] = {
+                r.decode(): (a, b) for (r, a, b) in code_group["raster_list"]
+            }
 
     for ss, se in interval_range(s0, s1, ds):
         idmd = ido.read(ss, se, "sweepid")
         for ks, sweepid in idmd.items():
-            raster_table = rasters.get(sweepid, None)
-            if raster_table is None:
-                try:
-                    sweep = tmm.getTimingSweepByID(sweepid)
-                except KeyError:
-                    traceback.print_exc()
-                    continue
-                code = sweep.getCodeObject()
-                raster_table = code.getRasterTable()
-                rasters[sweepid] = raster_table
+            raster_table = rasters[sweepid]
 
             full_rasters = tuple(
                 int(np.round(s * fs / 1e9)) for s in raster_table["full"]
@@ -97,7 +92,7 @@ def noise_generator(no, s0, s1, ds=None, columns=None):
         yield noisemd, ss, se
 
 
-def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=None):
+def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
     rx_attrs = rfo.get_properties(rxch)
     tx_attrs = rfo.get_properties(txch)
 
@@ -126,7 +121,7 @@ def data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=None):
     else:
         noise_ests = collections.OrderedDict()
 
-    for s, sweepid, raster in pulse_generator(ido, tmm, s0, s1, offsets=offsets):
+    for s, sweepid, raster in pulse_generator(ido, tmm_hdf5, s0, s1, offsets=offsets):
         t = np.round(s * (1e9 / rxfs)).astype("datetime64[ns]")
 
         if no is not None:
@@ -232,6 +227,7 @@ def detect_meteors(
     rf_dir,
     output_dir,
     id_dir,
+    tmm_hdf5,
     noise_dir=None,
     t0=None,
     t1=None,
@@ -259,14 +255,17 @@ def detect_meteors(
     rf_dir : string or list
         RF data directory or directories.
 
+    output_dir : string
+        Meteor data output directory.
+
     id_dir : string
         ID code metadata directory.
 
+    tmm_hdf5 : string
+        Path to timing mode HDF5 file.
+
     noise_dir : string
         RX noise metadata directory.
-
-    output_dir : string
-        Meteor data output directory.
 
     t0 : float, optional
         Start time, seconds since epoch. If None, start at beginning of data.
@@ -317,13 +316,6 @@ def detect_meteors(
     else:
         s1 = int(np.uint64(t1 * rxfs))
 
-    # load pulse/coding information
-    tmm = TimingModeManager.TimingModeManager()
-    if os.path.exists("/tmp/tmm.hdf5"):
-        tmm.loadFromHdf5("/tmp/tmm.hdf5", skip_lowlevel=True)
-    else:
-        tmm.loadFromHdf5(skip_lowlevel=True)
-
     # convert altitudes to ranges
     rng2alt = np.cos(np.pi / 2 - pointing_el * np.pi / 180)
     rmin_km = amin_km / rng2alt
@@ -334,7 +326,7 @@ def detect_meteors(
         os.makedirs(output_dir)
 
     # initalize generator that steps through data pulse by pulse
-    pulse_data = data_generator(rfo, ido, no, tmm, s0, s1, rxch, txch, offsets=offsets)
+    pulse_data = data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=offsets)
 
     # initialize clustering object for grouping detections
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
@@ -456,6 +448,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-o", "--output_dir", required=True, help="Meteor data output directory."
+    )
+    parser.add_argument(
+        "--tmm",
+        dest="tmm_hdf5",
+        default="/tmp/tmm.hdf5",
+        help="Path to timing mode HDF5 file. (default %(default)s)",
     )
     parser.add_argument(
         "-0",
@@ -581,6 +579,7 @@ if __name__ == "__main__":
         rf_dir=a.rf_dir,
         output_dir=a.output_dir,
         id_dir=a.id_dir,
+        tmm_hdf5=a.tmm_hdf5,
         noise_dir=a.noise_dir,
         t0=a.t0,
         t1=a.t1,

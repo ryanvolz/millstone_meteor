@@ -139,9 +139,15 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, deb
             noise_raster = tuple(
                 int(np.round(ks * rxfs / 1e9)) for ks in raster["noise"]
             )
-            noise_data = rfo.read_vector_1d(
-                s + noise_raster[0], noise_raster[1] - noise_raster[0], rxch
-            )
+            try:
+                noise_data = rfo.read_vector_1d(
+                    s + noise_raster[0], noise_raster[1] - noise_raster[0], rxch
+                )
+            except IOError:
+                noise_data = np.zeros(
+                    noise_raster[1] - noise_raster[0],
+                    dtype=np.complex64,
+                )
             noise_pwr = noise_data.real ** 2 + noise_data.imag ** 2
             noise_pwr_med = np.median(noise_pwr)
             # spike removal
@@ -173,19 +179,26 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, deb
             int(np.round(raster["tx"][0] * txfs / 1e9)),
             int(np.round(raster["tx"][1] * txfs / 1e9)),
         )
-        tx_data = rfo.read_vector_1d(
-            int(np.round(s * txfs / rxfs)) + tx_raster[0],
-            tx_raster[1] - tx_raster[0],
-            txch,
-        )
+        try:
+            tx_data = rfo.read_vector_1d(
+                int(np.round(s * txfs / rxfs)) + tx_raster[0],
+                tx_raster[1] - tx_raster[0],
+                txch,
+            )
+        except IOError:
+            tx_data = np.zeros(tx_raster[1] - tx_raster[0], dtype=np.complex64)
+            tx_data[0] = 1
 
         rx_raster = (
             int(np.round(raster["blank"][1] * rxfs / 1e9)),
             int(np.round(raster["signal"][1] * rxfs / 1e9)),
         )
-        rx_data = rfo.read_vector_1d(
-            s + rx_raster[0], rx_raster[1] - rx_raster[0], rxch
-        )
+        try:
+            rx_data = rfo.read_vector_1d(
+                s + rx_raster[0], rx_raster[1] - rx_raster[0], rxch
+            )
+        except IOError:
+            rx_data = np.zeros(rx_raster[1] - rx_raster[0], dtype=np.complex64)
 
         # FUTURE WORK: would prefer to use a Dataset here with tx, rx, noise as arrays
         tx_attrs.update(sweepid=sweepid)

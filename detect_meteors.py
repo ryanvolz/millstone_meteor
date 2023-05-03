@@ -92,7 +92,7 @@ def noise_generator(no, s0, s1, ds=None, columns=None):
         yield noisemd, ss, se
 
 
-def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
+def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, debug=False):
     rx_attrs = rfo.get_properties(rxch)
     tx_attrs = rfo.get_properties(txch)
 
@@ -220,6 +220,17 @@ def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None):
             attrs=rx_attrs,
         )
 
+        if debug:
+            import matplotlib.pyplot as plt
+
+            fig, axarr = plt.subplots(2, 1)
+            np.abs(tx).plot.line(ax=axarr[0])
+            np.abs(rx).plot.line(ax=axarr[1])
+            fig.tight_layout()
+            plt.show()
+            # turn off debug plotting for subsequent loops
+            debug = False
+
         yield s, tx, rx
 
 
@@ -326,7 +337,7 @@ def detect_meteors(
         os.makedirs(output_dir)
 
     # initalize generator that steps through data pulse by pulse
-    pulse_data = data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=offsets)
+    pulse_data = data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=offsets, debug=debug)
 
     # initialize clustering object for grouping detections
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)

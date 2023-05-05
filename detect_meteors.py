@@ -6,6 +6,7 @@ import collections
 import csv
 import datetime
 import os
+import pathlib
 import sys
 import traceback
 
@@ -92,7 +93,9 @@ def noise_generator(no, s0, s1, ds=None, columns=None):
         yield noisemd, ss, se
 
 
-def data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, debug=False):
+def data_generator(
+    rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, debug=False
+):
     rx_attrs = rfo.get_properties(rxch)
     tx_attrs = rfo.get_properties(txch)
 
@@ -269,6 +272,7 @@ def detect_meteors(
     rscale=150,
     vscale=3787,
     offsets=None,
+    resume=True,
     debug=False,
 ):
     """Function to detect and summarize meteor head echoes.
@@ -317,6 +321,19 @@ def detect_meteors(
 
     rxfs = rfo.get_properties(rxch)["samples_per_second"]
 
+    mf_output_dir = pathlib.Path(output_dir) / f"mf_{rxch}"
+
+    # if resuming, get start time from already processed data
+    if t0 is None and resume:
+        mf_file_paths = sorted(mf_output_dir.glob("mf@*.h5"))
+        for mf_path in reversed(mf_file_paths):
+            try:
+                last_mf_ds = xr.open_dataset(mf_path, engine="h5netcdf")
+            except Exception:
+                continue
+            t0 = np.round(pd.Timestamp(last_mf_ds.t.values[-1]).timestamp())
+            break
+
     # infer time window to process based on bounds of data and metadata
     if t0 is None or t1 is None:
         bounds = []
@@ -350,7 +367,9 @@ def detect_meteors(
         os.makedirs(output_dir)
 
     # initalize generator that steps through data pulse by pulse
-    pulse_data = data_generator(rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=offsets, debug=debug)
+    pulse_data = data_generator(
+        rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=offsets, debug=debug
+    )
 
     # initialize clustering object for grouping detections
     clustering = Clustering(eps, min_samples, tscale, rscale, vscale)
@@ -368,9 +387,7 @@ def detect_meteors(
 
     # initialize storage and settings for saving Doppler-shifted matched filter results
     save_rx = []
-    mf_output_dir = os.path.join(output_dir, "mf_{ch}".format(ch=rxch))
-    if not os.path.exists(mf_output_dir):
-        os.makedirs(mf_output_dir)
+    mf_output_dir.mkdir(parents=True, exist_ok=True)
     curwrite_t = (
         np.round(s0 * (1e9 / rxfs)).astype("datetime64[ns]").astype("datetime64[s]")
     )
@@ -415,7 +432,7 @@ def detect_meteors(
             timestr = np.datetime_as_string(curwrite_t)
             timestr = timestr.replace(":", "-").replace(" ", "_")
             fname = "mf@{t}.h5".format(t=timestr)
-            filepath = os.path.join(output_dir, "mf_{ch}".format(ch=rxch), fname)
+            filepath = mf_output_dir / fname
 
             save_data.to_netcdf(
                 filepath,
@@ -440,7 +457,7 @@ def detect_meteors(
     timestr = np.datetime_as_string(curwrite_t, unit="s")
     timestr = timestr.replace(":", "-").replace(" ", "_")
     fname = "mf@{t}.h5".format(t=timestr)
-    filepath = os.path.join(output_dir, "mf_{ch}".format(ch=rxch), fname)
+    filepath = mf_output_dir / fname
 
     save_data.to_netcdf(
         filepath, mode="w", format="NETCDF4", engine="h5netcdf", invalid_netcdf=True
@@ -465,13 +482,22 @@ if __name__ == "__main__":
 
     parser.add_argument("rf_dir", nargs="+", help="RF Data directory or directories.")
     parser.add_argument(
-        "-i", "--id_dir", required=True, help="ID code metadata directory."
+        "-i",
+        "--id_dir",
+        required=True,
+        help="ID code metadata directory.",
     )
     parser.add_argument(
-        "-n", "--noise_dir", default=None, help="RX noise metadata directory."
+        "-n",
+        "--noise_dir",
+        default=None,
+        help="RX noise metadata directory.",
     )
     parser.add_argument(
-        "-o", "--output_dir", required=True, help="Meteor data output directory."
+        "-o",
+        "--output_dir",
+        required=True,
+        help="Meteor data output directory.",
     )
     parser.add_argument(
         "--tmm",
@@ -576,6 +602,13 @@ if __name__ == "__main__":
         help="Mode sample offset sweepid=offset pairs. (default: %(default)s)",
     )
     parser.add_argument(
+        "--ignore_existing",
+        dest="resume",
+        default=True,
+        action="store_false",
+        help="Ignore existing matched filtered data and do not resume processing.",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Turn on debugging (activates interactive plots, etc.).",
@@ -621,5 +654,6 @@ if __name__ == "__main__":
         rscale=a.rscale,
         vscale=a.vscale,
         offsets=a.offsets,
+        resume=a.resume,
         debug=a.debug,
     )

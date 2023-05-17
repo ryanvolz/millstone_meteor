@@ -2,7 +2,7 @@ import numpy as np
 from scipy.constants import c
 import xarray as xr
 
-import rkl
+import delay_multiply
 from time_utils import datetime_from_float, datetime_to_float
 from valarg import valargmax
 
@@ -41,7 +41,7 @@ def matched_filter(tx, rx, rmin_km=None, rmax_km=None):
     tx_normalized = tx.values / np.linalg.norm(tx.values)
 
     # perform matched filter calculation as (delay and multiply) + (FFT)
-    y = rkl.delay_multiply.delaymult_like_arg2(rx_corr, tx_normalized, R=1)
+    y = delay_multiply.delaymult_like_arg2(rx_corr, tx_normalized, R=1)
     z = np.fft.fft(y)
 
     # calculate coordinates for matched filtered data

@@ -8,7 +8,6 @@ import datetime
 import os
 import pathlib
 import sys
-import traceback
 
 import numpy as np
 import pandas as pd
@@ -211,7 +210,14 @@ def data_generator(
                 t=t,
                 delay=(
                     "delay",
-                    np.arange(tx_raster[0], tx_raster[1]),
+                    np.arange(
+                        tx_raster[0],
+                        tx_raster[1],
+                        dtype=np.result_type(
+                            np.min_scalar_type(tx_raster[0]),
+                            np.min_scalar_type(tx_raster[1]),
+                        ),
+                    ),
                     {"label": "Delay (samples)"},
                 ),
             ),
@@ -227,7 +233,14 @@ def data_generator(
                 t=t,
                 delay=(
                     "delay",
-                    np.arange(rx_raster[0], rx_raster[1]),
+                    np.arange(
+                        rx_raster[0],
+                        rx_raster[1],
+                        dtype=np.result_type(
+                            np.min_scalar_type(rx_raster[0]),
+                            np.min_scalar_type(rx_raster[1]),
+                        ),
+                    ),
                     {"label": "Delay (samples)"},
                 ),
             ),
@@ -273,6 +286,7 @@ def detect_meteors(
     vscale=3787,
     offsets=None,
     resume=True,
+    save_mf_bank=False,
     debug=False,
 ):
     """Function to detect and summarize meteor head echoes.
@@ -323,9 +337,16 @@ def detect_meteors(
 
     mf_output_dir = pathlib.Path(output_dir) / f"mf_{rxch}"
 
+    if not save_mf_bank:
+        mf_output_basename = "mf"
+    else:
+        mf_output_basename = "mfbank"
+
     # if resuming, get start time from already processed data
     if t0 is None and resume:
-        mf_file_paths = sorted(mf_output_dir.glob("mf@*.h5"))
+        mf_file_paths = sorted(
+            mf_output_dir.glob("{0}@*.h5".format(mf_output_basename))
+        )
         for mf_path in reversed(mf_file_paths):
             try:
                 last_mf_ds = xr.open_dataset(mf_path, engine="h5netcdf")
@@ -411,6 +432,40 @@ def detect_meteors(
         meteors, freq_idx = mp.detect_meteors(mf_rx, snr_thresh, vmin_kps, vmax_kps)
         mf_rx_best = mf_rx.isel(frequency=freq_idx)
 
+        if not save_mf_bank:
+            # summary frequency computations, power-weighted frequency moments
+            mf_rx_pwr = mf_rx.real ** 2 + mf_rx.imag ** 2
+            # mf_rx_max_pwr_freq = mf_rx_pwr.idxmax(dim="frequency").reset_coords(
+            #     "range_rate", drop=True
+            # )
+            # mf_rx_max_pwr_freq.attrs[
+            #     "label"
+            # ] = "Doppler frequency of maximum power (Hz)"
+            mf_rx_freq_moment_0 = mf_rx_pwr.sum(dim="frequency")
+            mf_rx_freq_moment_0.attrs["label"] = "Total power across frequency"
+            mf_rx_freq_moment_1 = (mf_rx_pwr * mf_rx_pwr.coords["frequency"]).sum(
+                dim="frequency"
+            ) / mf_rx_freq_moment_0
+            mf_rx_freq_moment_1.attrs["label"] = "Mean power-weighted frequency (Hz)"
+            mf_rx_freq_moment_2 = (
+                mf_rx_pwr * (mf_rx_pwr.coords["frequency"] - mf_rx_freq_moment_1) ** 2
+            ).sum(dim="frequency") / mf_rx_freq_moment_0
+            mf_rx_freq_moment_2.attrs[
+                "label"
+            ] = "Variance of power-weighted frequency (Hz)"
+
+            # combine matched filtered data and summary computations into single dataset
+            mf_ds = xr.Dataset(
+                data_vars=dict(
+                    mf_rx=mf_rx_best,
+                    freq_mean=mf_rx_freq_moment_1,
+                    freq_var=mf_rx_freq_moment_2,
+                ),
+                attrs=mf_rx.attrs,
+            )
+        else:
+            mf_ds = mf_rx.to_dataset()
+
         # clustering of detections into single meteor head echoes
         for meteor in meteors:
             sys.stdout.write("*")
@@ -427,11 +482,11 @@ def detect_meteors(
         # save result of doppler-shifted matched filter
         if t >= nextwrite_t:
             # join and write previous data
-            save_data = xr.concat(save_rx, "t").to_dataset()
+            save_data = xr.concat(save_rx, "t")
 
             timestr = np.datetime_as_string(curwrite_t)
             timestr = timestr.replace(":", "-").replace(" ", "_")
-            fname = "mf@{t}.h5".format(t=timestr)
+            fname = "{basename}@{t}.h5".format(basename=mf_output_basename, t=timestr)
             filepath = mf_output_dir / fname
 
             save_data.to_netcdf(
@@ -445,18 +500,18 @@ def detect_meteors(
             del save_data
 
             save_rx.clear()
-            save_rx.append(mf_rx_best)
+            save_rx.append(mf_ds)
             curwrite_t = nextwrite_t
             nextwrite_t = curwrite_t + tdelta
         else:
-            save_rx.append(mf_rx_best)
+            save_rx.append(mf_ds)
 
     # join and write previous data
-    save_data = xr.concat(save_rx, "t").to_dataset()
+    save_data = xr.concat(save_rx, "t")
 
     timestr = np.datetime_as_string(curwrite_t, unit="s")
     timestr = timestr.replace(":", "-").replace(" ", "_")
-    fname = "mf@{t}.h5".format(t=timestr)
+    fname = "{basename}@{t}.h5".format(basename=mf_output_basename, t=timestr)
     filepath = mf_output_dir / fname
 
     save_data.to_netcdf(
@@ -538,19 +593,28 @@ if __name__ == "__main__":
         "--pointing_el",
         type=float,
         default=90,
-        help="Antenna pointing elevation (from horizon) in Degrees. (default: %(default)s)",
+        help=(
+            "Antenna pointing elevation (from horizon) in Degrees."
+            " (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--amin",
         type=float,
         default=70,
-        help="Lower boundary of altitude window for detection (km). (default: %(default)s)",
+        help=(
+            "Lower boundary of altitude window for detection (km)."
+            " (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--amax",
         type=float,
         default=140,
-        help="Upper boundary of altitude window for detection (km). (default: %(default)s)",
+        help=(
+            "Upper boundary of altitude window for detection (km)."
+            " (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--vmin",
@@ -574,7 +638,10 @@ if __name__ == "__main__":
         "--min_samples",
         type=float,
         default=4,
-        help="Minimum number of points in neighborhood that constitutes a cluster. (default: %(default)s)",
+        help=(
+            "Minimum number of points in neighborhood that constitutes a cluster."
+            " (default: %(default)s)"
+        ),
     )
     parser.add_argument(
         "--tscale",
@@ -606,7 +673,20 @@ if __name__ == "__main__":
         dest="resume",
         default=True,
         action="store_false",
-        help="Ignore existing matched filtered data and do not resume processing.",
+        help=(
+            "Ignore existing matched filtered data and do not resume processing."
+            " (default: False)"
+        ),
+    )
+    parser.add_argument(
+        "--save_mf_bank",
+        dest="save_mf_bank",
+        default=False,
+        action="store_true",
+        help=(
+            "Save the full results from the bank of matched filters, instead of the"
+            " per-pulse highest SNR match. (default: False)"
+        ),
     )
     parser.add_argument(
         "--debug",
@@ -655,5 +735,6 @@ if __name__ == "__main__":
         vscale=a.vscale,
         offsets=a.offsets,
         resume=a.resume,
+        save_mf_bank=a.save_mf_bank,
         debug=a.debug,
     )

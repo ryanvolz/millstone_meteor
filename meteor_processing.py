@@ -42,10 +42,20 @@ def matched_filter(tx, rx, rmin_km=None, rmax_km=None):
 
     # perform matched filter calculation as (delay and multiply) + (FFT)
     y = delay_multiply.delaymult_like_arg2(rx_corr, tx_normalized, R=1)
-    z = np.fft.fft(y)
+    z = np.fft.fft(y).astype(np.complex64)
 
     # calculate coordinates for matched filtered data
-    delays = np.arange(-(tx.shape[0] - 1), rx_corr.shape[0]) + rx.delay.values[rx_start]
+    delays = (
+        np.arange(
+            -(tx.shape[0] - 1),
+            rx_corr.shape[0],
+            dtype=np.result_type(
+                np.min_scalar_type(-(tx.shape[0] - 1)),
+                np.min_scalar_type(rx_corr.shape[0]),
+            ),
+        )
+        + rx.delay.values[rx_start]
+    )
     freqs = np.fft.fftfreq(tx.shape[0], 1 / fs)
 
     # subset matched filtered data to desired delay bounds

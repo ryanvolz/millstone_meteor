@@ -5,6 +5,7 @@ import numpy as np
 
 import plotting
 
+
 def plot_mf(mf_ds):
     # use an average noise value for SNR for plotting so pulse-to-pulse variations
     # in noise are visible if they exist
@@ -33,12 +34,15 @@ def plot_mf(mf_ds):
 
     return fig, dpi
 
+
 if __name__ == "__main__":
     import argparse
     import os
     import pathlib
 
     import xarray as xr
+
+    plt.switch_backend("Agg")
 
     parser = argparse.ArgumentParser()
 

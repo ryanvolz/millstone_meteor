@@ -49,16 +49,33 @@ def pulse_generator(ido, tmm_hdf5, s0, s1, ds=None, offsets=None):
 
     if offsets is None:
         offsets = {}
+    codes = {}
     rasters = {}
     with h5py.File(tmm_hdf5, "r") as tmm_file:
         for code_acronym, code_group in tmm_file["codes"].items():
-            rasters[code_group.attrs["base_id_code"]] = {
+            code_list = code_group["code_list"][()]
+            bauds = (code_list["I"] + 1j * code_list["Q"]).astype(np.complex64)
+            code_idx = (
+                np.arange(0, code_group.attrs["pulse_length"], 1e9 / fs)
+                / code_group.attrs["baud_length"]
+            ).astype(np.int_)
+            sampled_codes = bauds[:, code_idx]
+
+            raster_dict = {
                 r.decode(): (a, b) for (r, a, b) in code_group["raster_list"]
             }
+
+            base_id_code = code_group.attrs["base_id_code"]
+            sweep_count = code_group.attrs["sweep_count"]
+            for sweep_k in range(sweep_count):
+                sweepid = base_id_code + sweep_k
+                codes[sweepid] = sampled_codes[sweep_k, :]
+                rasters[sweepid] = raster_dict
 
     for ss, se in interval_range(s0, s1, ds):
         idmd = ido.read(ss, se, "sweepid")
         for ks, sweepid in idmd.items():
+            code = codes[sweepid]
             raster_table = rasters[sweepid]
 
             full_rasters = tuple(
@@ -75,7 +92,7 @@ def pulse_generator(ido, tmm_hdf5, s0, s1, ds=None, offsets=None):
 
             if pulse_sample_idx + full_rasters[1] <= se:
                 # only yield a pulse with full raster inside the desired sample window
-                yield pulse_sample_idx, sweepid, raster_table
+                yield pulse_sample_idx, sweepid, raster_table, code
 
 
 def noise_generator(no, s0, s1, ds=None, columns=None):
@@ -93,12 +110,15 @@ def noise_generator(no, s0, s1, ds=None, columns=None):
 
 
 def data_generator(
-    rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch, offsets=None, debug=False
+    rfo, ido, no, tmm_hdf5, s0, s1, rxch, txch=None, offsets=None, debug=False
 ):
-    rx_attrs = rfo.get_properties(rxch)
-    tx_attrs = rfo.get_properties(txch)
+    ch_list = [rxch]
+    if txch is not None:
+        ch_list.append(txch)
+    ch_attr_list = [rfo.get_properties(ch) for ch in ch_list]
+    rx_attrs = ch_attr_list[0]
 
-    for ch, attrs in zip([rxch, txch], [rx_attrs, tx_attrs]):
+    for ch, attrs in zip(ch_list, ch_attr_list):
         mdo = rfo.get_digital_metadata(ch)
         md_bounds = mdo.get_bounds()
         md_dict = mdo.read(md_bounds[0], md_bounds[1])
@@ -110,8 +130,7 @@ def data_generator(
         md = md_dict[md_idx[md_loc]]
         attrs.update(md)
 
-    rxfs = rx_attrs["samples_per_second"]
-    txfs = tx_attrs["samples_per_second"]
+    rxfs = ch_attr_list[0]["samples_per_second"]
 
     if no is not None:
         nch = rxch.split("-")[0]
@@ -123,7 +142,9 @@ def data_generator(
     else:
         noise_ests = collections.OrderedDict()
 
-    for s, sweepid, raster in pulse_generator(ido, tmm_hdf5, s0, s1, offsets=offsets):
+    for s, sweepid, raster, code in pulse_generator(
+        ido, tmm_hdf5, s0, s1, offsets=offsets
+    ):
         t = np.round(s * (1e9 / rxfs)).astype("datetime64[ns]")
 
         if no is not None:
@@ -177,20 +198,6 @@ def data_generator(
                     break
             noise = dict(noise_power=np.median(list(noise_ests.values())))
 
-        tx_raster = (
-            int(np.round(raster["tx"][0] * txfs / 1e9)),
-            int(np.round(raster["tx"][1] * txfs / 1e9)),
-        )
-        try:
-            tx_data = rfo.read_vector_1d(
-                int(np.round(s * txfs / rxfs)) + tx_raster[0],
-                tx_raster[1] - tx_raster[0],
-                txch,
-            )
-        except IOError:
-            tx_data = np.zeros(tx_raster[1] - tx_raster[0], dtype=np.complex64)
-            tx_data[0] = 1
-
         rx_raster = (
             int(np.round(raster["blank"][1] * rxfs / 1e9)),
             int(np.round(raster["signal"][1] * rxfs / 1e9)),
@@ -202,31 +209,8 @@ def data_generator(
         except IOError:
             rx_data = np.zeros(rx_raster[1] - rx_raster[0], dtype=np.complex64)
 
-        # FUTURE WORK: would prefer to use a Dataset here with tx, rx, noise as arrays
-        tx_attrs.update(sweepid=sweepid)
-        tx = xr.DataArray(
-            tx_data,
-            coords=dict(
-                t=t,
-                delay=(
-                    "delay",
-                    np.arange(
-                        tx_raster[0],
-                        tx_raster[1],
-                        dtype=np.result_type(
-                            np.min_scalar_type(tx_raster[0]),
-                            np.min_scalar_type(tx_raster[1]),
-                        ),
-                    ),
-                    {"label": "Delay (samples)"},
-                ),
-            ),
-            dims=("delay",),
-            name="tx",
-            attrs=tx_attrs,
-        )
-
         rx_attrs.update(noise)
+        # FUTURE WORK: would prefer to use a Dataset here with tx, rx, noise as arrays
         rx = xr.DataArray(
             rx_data,
             coords=dict(
@@ -248,6 +232,66 @@ def data_generator(
             name="rx",
             attrs=rx_attrs,
         )
+
+        if txch is not None:
+            tx_attrs = ch_attr_list[1]
+            txfs = tx_attrs["samples_per_second"]
+
+            tx_raster = (
+                int(np.round(raster["tx"][0] * txfs / 1e9)),
+                int(np.round(raster["tx"][1] * txfs / 1e9)),
+            )
+            try:
+                tx_data = rfo.read_vector_1d(
+                    int(np.round(s * txfs / rxfs)) + tx_raster[0],
+                    tx_raster[1] - tx_raster[0],
+                    txch,
+                )
+            except IOError:
+                tx_data = np.zeros(tx_raster[1] - tx_raster[0], dtype=np.complex64)
+                tx_data[0] = 1
+
+            tx_attrs.update(sweepid=sweepid)
+            tx = xr.DataArray(
+                tx_data,
+                coords=dict(
+                    t=t,
+                    delay=(
+                        "delay",
+                        np.arange(
+                            tx_raster[0],
+                            tx_raster[1],
+                            dtype=np.result_type(
+                                np.min_scalar_type(tx_raster[0]),
+                                np.min_scalar_type(tx_raster[1]),
+                            ),
+                        ),
+                        {"label": "Delay (samples)"},
+                    ),
+                ),
+                dims=("delay",),
+                name="tx",
+                attrs=tx_attrs,
+            )
+        else:
+            tx = xr.DataArray(
+                code,
+                coords=dict(
+                    t=t,
+                    delay=(
+                        "delay",
+                        np.arange(
+                            0,
+                            len(code),
+                            dtype=np.min_scalar_type(len(code)),
+                        ),
+                        {"label": "Delay (samples)"},
+                    ),
+                ),
+                dims=("delay",),
+                name="tx",
+                attrs=dict(sweepid=sweepid),
+            )
 
         if debug:
             import matplotlib.pyplot as plt
@@ -319,12 +363,9 @@ def detect_meteors(
         Receiver channel to process.
 
     txch : string, optional
-        Transmitter channel.
+        Transmitter channel. If None, use the ideal code.
 
     """
-    if txch is None:
-        txch = rxch
-
     # set up reader objects for data and metadata
     rfo = drf.DigitalRFReader(rf_dir)
     ido = drf.DigitalMetadataReader(id_dir)
@@ -359,7 +400,8 @@ def detect_meteors(
     if t0 is None or t1 is None:
         bounds = []
         bounds.append(rfo.get_bounds(rxch))
-        bounds.append(rfo.get_bounds(txch))
+        if txch is not None:
+            bounds.append(rfo.get_bounds(txch))
         bounds.append(ido.get_bounds())
         if no is not None:
             bounds.append(no.get_bounds())

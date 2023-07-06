@@ -18,7 +18,7 @@ from time_utils import datetime_from_float, datetime_to_float, timestamp_strftim
 __all__ = [
     "rtiplot",
     "implot",
-    "colorbar",
+    "add_colorbar",
     "size_dpi_nointerp",
     "make_axes_fixed",
     "rotate_ticklabels",
@@ -105,7 +105,7 @@ def implot(
 
     if ax is None:
         ax = plt.gca()
-    img = ax.imshow(z.T, **imshowkwargs)
+    img = ax.imshow(z.swapaxes(0, 1), **imshowkwargs)
     ax.grid(False)
 
     if cbar:

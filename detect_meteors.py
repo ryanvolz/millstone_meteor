@@ -477,12 +477,12 @@ def detect_meteors(
         if not save_mf_bank:
             # summary frequency computations, power-weighted frequency moments
             mf_rx_pwr = mf_rx.real ** 2 + mf_rx.imag ** 2
-            # mf_rx_max_pwr_freq = mf_rx_pwr.idxmax(dim="frequency").reset_coords(
-            #     "range_rate", drop=True
-            # )
-            # mf_rx_max_pwr_freq.attrs[
-            #     "label"
-            # ] = "Doppler frequency of maximum power (Hz)"
+            mf_rx_max_pwr_freq = mf_rx_pwr.idxmax(dim="frequency").reset_coords(
+                "range_rate", drop=True
+            )
+            mf_rx_max_pwr_freq.attrs[
+                "label"
+            ] = "Doppler frequency of maximum power (Hz)"
             mf_rx_freq_moment_0 = mf_rx_pwr.sum(dim="frequency")
             mf_rx_freq_moment_0.attrs["label"] = "Total power across frequency"
             mf_rx_freq_moment_1 = (mf_rx_pwr * mf_rx_pwr.coords["frequency"]).sum(
@@ -502,6 +502,7 @@ def detect_meteors(
                     mf_rx=mf_rx_best,
                     freq_mean=mf_rx_freq_moment_1,
                     freq_var=mf_rx_freq_moment_2,
+                    freq_max_pwr=mf_rx_max_pwr_freq,
                 ),
                 attrs=mf_rx.attrs,
             )
